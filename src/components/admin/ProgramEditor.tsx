@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Edit3, Trash2, X } from 'lucide-react';
 import { TechnicalCard, TechnicalInput } from '../ui';
 import { ColumnModal } from './ColumnModal';

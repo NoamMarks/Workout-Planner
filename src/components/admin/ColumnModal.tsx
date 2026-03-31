@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Modal, TechnicalInput } from '../ui';
 import { cn } from '../../lib/utils';
 import type { ProgramColumn } from '../../types';

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ArrowLeft, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TechnicalCard } from '../ui';

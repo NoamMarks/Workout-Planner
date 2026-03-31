@@ -15,22 +15,22 @@ async function migrateClients(raw: unknown[]): Promise<Client[]> {
       // Hash any password that was stored in plaintext
       const password = isHashed(rawPassword) ? rawPassword : await hashPassword(rawPassword);
       return {
-        ...(client as Client),
+        ...(client as unknown as Client),
         role: (client.role as 'coach' | 'trainee') ?? 'trainee',
         password,
         programs: ((client.programs as unknown[]) ?? []).map((p: unknown) => {
           const prog = p as Record<string, unknown>;
           return {
-            ...(prog as Program),
+            ...(prog as unknown as Program),
             columns: (prog.columns as ProgramColumn[]) ?? [...DEFAULT_COLUMNS],
             weeks: ((prog.weeks as unknown[]) ?? []).map((w: unknown) => {
               const week = w as Record<string, unknown>;
               return {
-                ...(week as Program['weeks'][0]),
+                ...(week as unknown as Program['weeks'][0]),
                 days: ((week.days as unknown[]) ?? []).map((d: unknown) => {
                   const day = d as Record<string, unknown>;
                   return {
-                    ...(day as WorkoutDay),
+                    ...(day as unknown as WorkoutDay),
                     exercises: ((day.exercises as unknown[]) ?? []).map((ex: unknown) => ({
                       ...(ex as ExercisePlan),
                       values:
