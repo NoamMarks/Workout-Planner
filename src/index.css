@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-background: #0a0a0a;
+  --color-foreground: #ffffff;
+  --color-card: #141414;
+  --color-border: #262626;
+  --color-muted: #1a1a1a;
+  --color-muted-foreground: #737373;
+}
+
+.light {
+  --color-background: #fafafa;
+  --color-foreground: #0a0a0a;
+  --color-card: #ffffff;
+  --color-border: #e5e5e5;
+  --color-muted: #f5f5f5;
+  --color-muted-foreground: #737373;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  /* Suppress browser-native focus outlines on all inputs/textareas site-wide.
+     Focusable UI elements that need visible focus rings define them explicitly. */
+  input, textarea, select {
+    outline: none;
+  }
+  /* Hide scrollbar but keep scrollability */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
