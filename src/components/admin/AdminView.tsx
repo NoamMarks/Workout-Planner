@@ -1,18 +1,20 @@
 import { useState } from 'react';
-import { ArrowLeft, Trash2 } from 'lucide-react';
+import { ArrowLeft, Trash2, KeyRound } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ProgramEditor } from './ProgramEditor';
 import { cn } from '../../lib/utils';
 import { createDefaultProgram } from '../../constants/mockData';
+import { checkPasswordStrength } from '../../lib/crypto';
 import type { Client, Program } from '../../types';
 
 interface AdminViewProps {
   clients: Client[];
   onUpdateClients: (clients: Client[]) => void;
+  onResetPassword: (clientId: string, newPassword: string) => Promise<void>;
   onBack: () => void;
 }
 
-export function AdminView({ clients, onUpdateClients, onBack }: AdminViewProps) {
+export function AdminView({ clients, onUpdateClients, onResetPassword, onBack }: AdminViewProps) {
   const trainees = clients.filter((c) => c.role === 'trainee');
 
   const [selectedClient, setSelectedClient] = useState<Client | null>(trainees[0] ?? null);
@@ -35,6 +37,17 @@ export function AdminView({ clients, onUpdateClients, onBack }: AdminViewProps) 
     );
     setEditingProgram(newProgram);
     onUpdateClients(updatedClients);
+  };
+
+  const handleResetPassword = async (clientId: string, clientName: string) => {
+    const newPassword = window.prompt(
+      `Enter new password for ${clientName}:\n(min 8 chars, 1 letter, 1 number)`
+    );
+    if (!newPassword) return;
+    const { ok, errors } = checkPasswordStrength(newPassword);
+    if (!ok) { window.alert(`Password too weak:\n${errors.join('\n')}`); return; }
+    await onResetPassword(clientId, newPassword);
+    window.alert(`Password reset for ${clientName}.\nNew password: ${newPassword}`);
   };
 
   const handleDeleteClient = (clientId: string) => {
@@ -104,6 +117,13 @@ export function AdminView({ clients, onUpdateClients, onBack }: AdminViewProps) 
                   <p className="text-[10px] font-mono opacity-60 uppercase tracking-widest mt-1">
                     {c.email}
                   </p>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); void handleResetPassword(c.id, c.name); }}
+                  className="absolute top-3 right-11 p-1.5 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-blue-400 transition-all"
+                  title="Reset password"
+                >
+                  <KeyRound className="w-4 h-4" />
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleDeleteClient(c.id); }}

@@ -98,17 +98,25 @@ export function useProgramData() {
   }, []);
 
   const addClient = useCallback(
-    async (name: string, email: string, password: string) => {
+    async (name: string, email: string, password: string, role: 'coach' | 'trainee' = 'trainee') => {
       const hashed = await hashPassword(password);
       const newClient: Client = {
         id: Math.random().toString(36).substring(7),
         name,
         email,
         password: hashed,
-        role: 'trainee',
+        role,
         programs: [],
       };
       updateClients([...clients, newClient]);
+    },
+    [clients, updateClients]
+  );
+
+  const resetPassword = useCallback(
+    async (clientId: string, newPassword: string) => {
+      const hashed = await hashPassword(newPassword);
+      updateClients(clients.map((c) => (c.id === clientId ? { ...c, password: hashed } : c)));
     },
     [clients, updateClients]
   );
@@ -146,5 +154,5 @@ export function useProgramData() {
     [clients, updateClients]
   );
 
-  return { clients, isBootstrapping, updateClients, addClient, saveSession, deleteClient };
+  return { clients, isBootstrapping, updateClients, addClient, saveSession, deleteClient, resetPassword };
 }

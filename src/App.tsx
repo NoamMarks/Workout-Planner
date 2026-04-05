@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from './hooks/useAuth';
 import { useProgramData } from './hooks/useProgramData';
 import { TechnicalCard, TechnicalInput, Modal } from './components/ui';
+import { cn } from './lib/utils';
 import { AdminView } from './components/admin/AdminView';
 import { ClientDashboard } from './components/trainee/ClientDashboard';
 import { WorkoutGridLogger } from './components/trainee/WorkoutGridLogger';
@@ -195,21 +196,24 @@ function AddClientModal({
   isOpen,
   onClose,
   onAdd,
+  allowRoleSelection = false,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (name: string, email: string, password: string) => Promise<void>;
+  onAdd: (name: string, email: string, password: string, role: 'coach' | 'trainee') => Promise<void>;
+  allowRoleSelection?: boolean;
 }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [role, setRole] = useState<'coach' | 'trainee'>('trainee');
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
 
   const reset = () => {
     setName(''); setEmail(''); setPassword(''); setConfirm('');
-    setErrors([]); setSubmitting(false);
+    setRole('trainee'); setErrors([]); setSubmitting(false);
   };
 
   const handleClose = () => { reset(); onClose(); };
@@ -226,7 +230,7 @@ function AddClientModal({
     if (errs.length > 0) { setErrors(errs); return; }
 
     setSubmitting(true);
-    await onAdd(name.trim(), email.trim(), password);
+    await onAdd(name.trim(), email.trim(), password, role);
     reset();
     onClose();
   };
@@ -234,7 +238,7 @@ function AddClientModal({
   const strength = checkPasswordStrength(password);
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="New Client">
+    <Modal isOpen={isOpen} onClose={handleClose} title={allowRoleSelection ? 'New User' : 'New Client'}>
       <div className="space-y-5">
         {[
           { label: 'Full Name', value: name,     set: setName,     placeholder: 'John Doe',          testId: 'new-client-name',     type: 'text' },
@@ -257,6 +261,32 @@ function AddClientModal({
             </div>
           </div>
         ))}
+
+        {/* Role selector — coaches only */}
+        {allowRoleSelection && (
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+              Role
+            </label>
+            <div className="flex gap-3">
+              {(['trainee', 'coach'] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setRole(r)}
+                  className={cn(
+                    'flex-1 py-3 text-xs font-bold uppercase tracking-widest border transition-all',
+                    role === r
+                      ? 'bg-foreground text-background border-foreground'
+                      : 'border-border text-muted-foreground hover:border-muted-foreground'
+                  )}
+                >
+                  {r === 'coach' ? 'Coach (Admin)' : 'Trainee'}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Password strength indicator */}
         {password.length > 0 && (
@@ -350,7 +380,7 @@ function AppShell({
 // ─── Root App ────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const { clients, isBootstrapping, updateClients, addClient, saveSession } = useProgramData();
+  const { clients, isBootstrapping, updateClients, addClient, saveSession, resetPassword } = useProgramData();
   const { authenticatedUser, view, loginError, login, logout, setView } = useAuth();
 
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -395,24 +425,25 @@ export default function App() {
     }
   }, [clients]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-set selectedClient for trainees on login
+  useEffect(() => {
+    if (authenticatedUser?.role === 'trainee') {
+      const fresh = clients.find((c) => c.id === authenticatedUser.id);
+      if (fresh) setSelectedClient(fresh);
+    }
+  }, [authenticatedUser, clients]);
+
   // ── Landing / Login ────────────────────────────────────────────────────
 
   if (!authenticatedUser || view === 'landing') {
     return (
-      <>
-        <LandingPage
-          onLogin={handleLogin}
-          loginError={loginError}
-          isBootstrapping={isBootstrapping}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-        />
-        <AddClientModal
-          isOpen={isAddClientOpen}
-          onClose={() => setIsAddClientOpen(false)}
-          onAdd={addClient}
-        />
-      </>
+      <LandingPage
+        onLogin={handleLogin}
+        loginError={loginError}
+        isBootstrapping={isBootstrapping}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
     );
   }
 
@@ -446,6 +477,10 @@ export default function App() {
   // ── Admin view ─────────────────────────────────────────────────────────
 
   if (view === 'admin') {
+    if (authenticatedUser.role !== 'coach') {
+      setView('trainee');
+      return null;
+    }
     return (
       <AppShell
         authenticatedUser={authenticatedUser}
@@ -457,6 +492,7 @@ export default function App() {
         <AdminView
           clients={clients}
           onUpdateClients={updateClients}
+          onResetPassword={resetPassword}
           onBack={() => setView('coach')}
         />
       </AppShell>
@@ -492,6 +528,11 @@ export default function App() {
 
   // ── Coach: client list ─────────────────────────────────────────────────
 
+  if (authenticatedUser.role !== 'coach') {
+    // Trainee with no selectedClient yet (edge case during bootstrap)
+    return null;
+  }
+
   return (
     <AppShell
       authenticatedUser={authenticatedUser}
@@ -510,7 +551,8 @@ export default function App() {
       <AddClientModal
         isOpen={isAddClientOpen}
         onClose={() => setIsAddClientOpen(false)}
-        onAdd={addClient}
+        onAdd={(n, e, p, r) => addClient(n, e, p, r)}
+        allowRoleSelection
       />
     </AppShell>
   );

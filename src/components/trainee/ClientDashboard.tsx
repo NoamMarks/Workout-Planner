@@ -15,7 +15,8 @@ export function ClientDashboard({ client, onBack, onStartWorkout }: ClientDashbo
   const activeProgram =
     client.programs.find((p) => p.id === client.activeProgramId) ?? client.programs[0];
 
-  const [selectedWeek, setSelectedWeek] = useState(activeProgram?.weeks[0]);
+  const [selectedWeekId, setSelectedWeekId] = useState(activeProgram?.weeks[0]?.id);
+  const selectedWeek = activeProgram?.weeks.find((w) => w.id === selectedWeekId) ?? activeProgram?.weeks[0];
 
   if (!activeProgram) {
     return (
@@ -59,7 +60,7 @@ export function ClientDashboard({ client, onBack, onStartWorkout }: ClientDashbo
         {activeProgram.weeks.map((week) => (
           <button
             key={week.id}
-            onClick={() => setSelectedWeek(week)}
+            onClick={() => setSelectedWeekId(week.id)}
             data-testid={`week-tab-${week.weekNumber}`}
             className={cn(
               'px-6 py-3 text-xs font-mono uppercase tracking-widest transition-all whitespace-nowrap border',
@@ -116,7 +117,7 @@ export function ClientDashboard({ client, onBack, onStartWorkout }: ClientDashbo
                           <span className="text-foreground font-medium">{ex.exerciseName}</span>
                         </div>
                         <span className="text-muted-foreground bg-muted/30 px-2 py-1 rounded-sm">
-                          {ex.sets} × {ex.reps}
+                          {ex.sets} × {ex.reps}{ex.expectedRpe ? ` @${ex.expectedRpe}` : ''}
                         </span>
                       </div>
                     ))}
