@@ -22,6 +22,7 @@ async function migrateClients(raw: unknown[]): Promise<Client[]> {
           const prog = p as Record<string, unknown>;
           return {
             ...(prog as unknown as Program),
+            status: ((prog.status as 'active' | 'archived') ?? 'active'),
             columns: (prog.columns as ProgramColumn[]) ?? [...DEFAULT_COLUMNS],
             weeks: ((prog.weeks as unknown[]) ?? []).map((w: unknown) => {
               const week = w as Record<string, unknown>;
@@ -123,6 +124,7 @@ export function useProgramData() {
 
   const saveSession = useCallback(
     (clientId: string, programId: string, weekId: string, updatedDay: WorkoutDay) => {
+      const stampedDay: WorkoutDay = { ...updatedDay, loggedAt: new Date().toISOString() };
       const updated = clients.map((c) => {
         if (c.id !== clientId) return c;
         return {
@@ -135,7 +137,7 @@ export function useProgramData() {
                 if (w.id !== weekId) return w;
                 return {
                   ...w,
-                  days: w.days.map((d) => (d.id === updatedDay.id ? updatedDay : d)),
+                  days: w.days.map((d) => (d.id === stampedDay.id ? stampedDay : d)),
                 };
               }),
             };
@@ -154,5 +156,38 @@ export function useProgramData() {
     [clients, updateClients]
   );
 
-  return { clients, isBootstrapping, updateClients, addClient, saveSession, deleteClient, resetPassword };
+  /**
+   * Mark a program as archived. If the archived program was the client's active
+   * program, clear `activeProgramId` so the coach can build a fresh block.
+   */
+  const archiveProgram = useCallback(
+    (clientId: string, programId: string) => {
+      const updated = clients.map((c) => {
+        if (c.id !== clientId) return c;
+        const wasActive = c.activeProgramId === programId;
+        return {
+          ...c,
+          activeProgramId: wasActive ? undefined : c.activeProgramId,
+          programs: c.programs.map((p) =>
+            p.id === programId
+              ? { ...p, status: 'archived' as const, archivedAt: new Date().toISOString() }
+              : p
+          ),
+        };
+      });
+      updateClients(updated);
+    },
+    [clients, updateClients]
+  );
+
+  return {
+    clients,
+    isBootstrapping,
+    updateClients,
+    addClient,
+    saveSession,
+    deleteClient,
+    resetPassword,
+    archiveProgram,
+  };
 }

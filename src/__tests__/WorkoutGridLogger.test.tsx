@@ -36,6 +36,7 @@ const PROGRAM: Program = {
   name: 'Hypertrophy Phase 1',
   weeks: [WEEK],
   columns: ALL_COLS,
+  status: 'active',
 };
 
 const CLIENT: Client = {

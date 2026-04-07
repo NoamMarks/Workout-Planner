@@ -45,6 +45,7 @@ export function WorkoutGridLogger({
   onSave,
 }: WorkoutGridLoggerProps) {
   const [exercises, setExercises] = useState<ExercisePlan[]>(day.exercises);
+  const [readiness, setReadiness] = useState<number | undefined>(day.readiness);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingFor, setUploadingFor] = useState<string | null>(null);
   const [plateCalcOpen, setPlateCalcOpen] = useState(false);
@@ -91,14 +92,35 @@ export function WorkoutGridLogger({
             </p>
           </div>
         </div>
-        <button
-          onClick={() => onSave({ ...day, exercises })}
-          data-testid="save-session-btn"
-          className="bg-green-600 text-white px-8 py-4 text-xs font-bold uppercase tracking-widest flex items-center hover:bg-green-500 transition-all shadow-lg hover:shadow-green-500/20"
-        >
-          <Save className="w-4 h-4 mr-2" />
-          Save Session
-        </button>
+        <div className="flex items-end gap-4">
+          {/* Readiness input */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">
+              Readiness 1–10
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={10}
+              value={readiness ?? ''}
+              onChange={(e) => {
+                const v = e.target.value === '' ? undefined : Math.max(1, Math.min(10, Number(e.target.value)));
+                setReadiness(v);
+              }}
+              data-testid="readiness-input"
+              className="w-20 bg-muted/30 border border-border px-3 py-2 text-center font-mono text-sm text-foreground outline-none focus:border-foreground transition-colors"
+              placeholder="—"
+            />
+          </div>
+          <button
+            onClick={() => onSave({ ...day, exercises, readiness })}
+            data-testid="save-session-btn"
+            className="bg-green-600 text-white px-8 py-4 text-xs font-bold uppercase tracking-widest flex items-center hover:bg-green-500 transition-all shadow-lg hover:shadow-green-500/20"
+          >
+            <Save className="w-4 h-4 mr-2" />
+            Save Session
+          </button>
+        </div>
       </header>
 
       {/* Grid */}

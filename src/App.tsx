@@ -381,7 +381,7 @@ function AppShell({
 // ─── Root App ────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const { clients, isBootstrapping, updateClients, addClient, saveSession, resetPassword } = useProgramData();
+  const { clients, isBootstrapping, updateClients, addClient, saveSession, resetPassword, archiveProgram } = useProgramData();
   const { authenticatedUser, view, loginError, login, logout, setView } = useAuth();
 
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -411,8 +411,8 @@ export default function App() {
   const handleSaveSession = (updatedDay: WorkoutDay) => {
     if (!selectedClient || !activeWorkout) return;
     const program =
-      selectedClient.programs.find((p) => p.id === selectedClient.activeProgramId) ??
-      selectedClient.programs[0];
+      selectedClient.programs.find((p) => p.id === selectedClient.activeProgramId && p.status !== 'archived') ??
+      selectedClient.programs.find((p) => p.status !== 'archived');
     if (!program) return;
     saveSession(selectedClient.id, program.id, activeWorkout.week.id, updatedDay);
     setActiveWorkout(null);
@@ -452,7 +452,8 @@ export default function App() {
 
   if (activeWorkout && selectedClient) {
     const program =
-      selectedClient.programs.find((p) => p.id === selectedClient.activeProgramId) ??
+      selectedClient.programs.find((p) => p.id === selectedClient.activeProgramId && p.status !== 'archived') ??
+      selectedClient.programs.find((p) => p.status !== 'archived') ??
       selectedClient.programs[0];
 
     return (
@@ -495,6 +496,7 @@ export default function App() {
           clients={clients}
           onUpdateClients={updateClients}
           onResetPassword={resetPassword}
+          onArchiveProgram={archiveProgram}
           onBack={() => setView('coach')}
         />
       </AppShell>

@@ -16,6 +16,8 @@ export function createEmptyProgram(name: string): Program {
     name,
     weeks: [],
     columns: [...DEFAULT_COLUMNS],
+    status: 'active',
+    createdAt: new Date().toISOString(),
   };
 }
 
@@ -25,6 +27,8 @@ export function createDefaultProgram(): Program {
     id: Math.random().toString(36).substring(7),
     name: 'Training Block 1',
     columns: [...DEFAULT_COLUMNS],
+    status: 'active',
+    createdAt: new Date().toISOString(),
     weeks: [
       {
         id: Math.random().toString(36).substring(7),
@@ -43,6 +47,8 @@ export function createDefaultProgram(): Program {
 export const MOCK_PROGRAM: Program = {
   id: 'p1',
   name: 'Hypertrophy Phase 1',
+  status: 'active',
+  createdAt: new Date().toISOString(),
   columns: [...DEFAULT_COLUMNS],
   weeks: Array.from({ length: 4 }).map((_, wIdx) => ({
     id: `w${wIdx + 1}`,

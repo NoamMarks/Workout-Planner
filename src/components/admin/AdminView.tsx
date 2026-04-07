@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ArrowLeft, Trash2, KeyRound } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, Trash2, KeyRound, Archive } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ProgramEditor } from './ProgramEditor';
 import { cn } from '../../lib/utils';
@@ -7,24 +7,44 @@ import { createDefaultProgram } from '../../constants/mockData';
 import { checkPasswordStrength } from '../../lib/crypto';
 import type { Client, Program } from '../../types';
 
+const activeProgramOf = (c: Client | null): Program | null =>
+  c?.programs.find((p) => p.status !== 'archived') ?? null;
+
 interface AdminViewProps {
   clients: Client[];
   onUpdateClients: (clients: Client[]) => void;
   onResetPassword: (clientId: string, newPassword: string) => Promise<void>;
+  onArchiveProgram: (clientId: string, programId: string) => void;
   onBack: () => void;
 }
 
-export function AdminView({ clients, onUpdateClients, onResetPassword, onBack }: AdminViewProps) {
+export function AdminView({
+  clients,
+  onUpdateClients,
+  onResetPassword,
+  onArchiveProgram,
+  onBack,
+}: AdminViewProps) {
   const trainees = clients.filter((c) => c.role === 'trainee');
 
   const [selectedClient, setSelectedClient] = useState<Client | null>(trainees[0] ?? null);
-  const [editingProgram, setEditingProgram] = useState<Program | null>(
-    trainees[0]?.programs[0] ?? null
-  );
+  const [editingProgram, setEditingProgram] = useState<Program | null>(activeProgramOf(trainees[0] ?? null));
+
+  // Keep the editing program in sync with the live store after archive/save
+  useEffect(() => {
+    if (!selectedClient) return;
+    const fresh = clients.find((c) => c.id === selectedClient.id);
+    if (!fresh) return;
+    setSelectedClient(fresh);
+    const stillExists = editingProgram
+      ? fresh.programs.find((p) => p.id === editingProgram.id && p.status !== 'archived')
+      : null;
+    setEditingProgram(stillExists ?? activeProgramOf(fresh));
+  }, [clients]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSelectClient = (client: Client) => {
     setSelectedClient(client);
-    setEditingProgram(client.programs[0] ?? null);
+    setEditingProgram(activeProgramOf(client));
   };
 
   const handleCreateProgram = () => {
@@ -37,6 +57,17 @@ export function AdminView({ clients, onUpdateClients, onResetPassword, onBack }:
     );
     setEditingProgram(newProgram);
     onUpdateClients(updatedClients);
+  };
+
+  const handleArchiveProgram = () => {
+    if (!selectedClient || !editingProgram) return;
+    if (
+      !window.confirm(
+        `Archive "${editingProgram.name}"? It will move to the trainee's history and you can build a new block.`
+      )
+    ) return;
+    onArchiveProgram(selectedClient.id, editingProgram.id);
+    setEditingProgram(null);
   };
 
   const handleResetPassword = async (clientId: string, clientName: string) => {
@@ -138,9 +169,22 @@ export function AdminView({ clients, onUpdateClients, onResetPassword, onBack }:
         </div>
 
         {/* Program editor */}
-        <div className="space-y-10">
+        <div className="space-y-6">
           {editingProgram ? (
-            <ProgramEditor program={editingProgram} onChange={handleProgramChange} />
+            <>
+              {/* Archive bar */}
+              <div className="flex justify-end">
+                <button
+                  onClick={handleArchiveProgram}
+                  data-testid="archive-block-btn"
+                  className="flex items-center gap-2 px-4 py-2 text-[10px] font-mono uppercase tracking-widest border border-amber-500/50 text-amber-500 hover:bg-amber-500 hover:text-background transition-all"
+                >
+                  <Archive className="w-4 h-4" />
+                  Archive Current Block
+                </button>
+              </div>
+              <ProgramEditor program={editingProgram} onChange={handleProgramChange} />
+            </>
           ) : (
             <div className="flex flex-col items-center justify-center py-32 space-y-6">
               <p className="text-muted-foreground font-mono text-xs uppercase tracking-widest">

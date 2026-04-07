@@ -24,6 +24,10 @@ export interface WorkoutDay {
   dayNumber: number;
   name: string;
   exercises: ExercisePlan[];
+  /** 1–10 self-reported readiness; logged when the trainee saves a session */
+  readiness?: number;
+  /** ISO timestamp of the last save — used by analytics to order sessions chronologically */
+  loggedAt?: string;
 }
 
 export interface WorkoutWeek {
@@ -32,11 +36,19 @@ export interface WorkoutWeek {
   days: WorkoutDay[];
 }
 
+export type ProgramStatus = 'active' | 'archived';
+
 export interface Program {
   id: string;
   name: string;
   weeks: WorkoutWeek[];
   columns: ProgramColumn[];
+  /** Defaults to 'active' for backwards compatibility with pre-Sprint-2 data */
+  status: ProgramStatus;
+  /** ISO timestamp set when the program is archived */
+  archivedAt?: string;
+  /** ISO timestamp set when the program is created */
+  createdAt?: string;
 }
 
 export interface Client {
