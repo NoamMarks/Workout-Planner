@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Client, Program, WorkoutDay, ExercisePlan, ProgramColumn } from '../types';
+import type { Client, Program, WorkoutDay, ExercisePlan, ProgramColumn, UserRole } from '../types';
 import { INITIAL_CLIENTS, DEFAULT_COLUMNS } from '../constants/mockData';
 import { hashPassword, isHashed } from '../lib/crypto';
 
@@ -12,18 +12,24 @@ async function migrateClients(raw: unknown[]): Promise<Client[]> {
     raw.map(async (c: unknown) => {
       const client = c as Record<string, unknown>;
       const rawPassword = (client.password as string) ?? 'changeme';
-      // Hash any password that was stored in plaintext
       const password = isHashed(rawPassword) ? rawPassword : await hashPassword(rawPassword);
+
+      // Migrate legacy 'coach' role → 'admin'
+      let role = (client.role as string) ?? 'trainee';
+      if (role === 'coach') role = 'admin';
+
       return {
         ...(client as unknown as Client),
-        role: (client.role as 'coach' | 'trainee') ?? 'trainee',
+        role: role as UserRole,
         password,
+        tenantId: (client.tenantId as string | undefined),
         programs: ((client.programs as unknown[]) ?? []).map((p: unknown) => {
           const prog = p as Record<string, unknown>;
           return {
             ...(prog as unknown as Program),
             status: ((prog.status as 'active' | 'archived') ?? 'active'),
             columns: (prog.columns as ProgramColumn[]) ?? [...DEFAULT_COLUMNS],
+            tenantId: (prog.tenantId as string | undefined),
             weeks: ((prog.weeks as unknown[]) ?? []).map((w: unknown) => {
               const week = w as Record<string, unknown>;
               return {
@@ -47,9 +53,10 @@ async function migrateClients(raw: unknown[]): Promise<Client[]> {
     })
   );
 
-  if (!clients.some((c) => c.role === 'coach')) {
-    const hashedCoach = await hashInitialClients([INITIAL_CLIENTS[0]]);
-    clients = [...hashedCoach, ...clients];
+  // Ensure at least one admin exists
+  if (!clients.some((c) => c.role === 'admin' || c.role === 'superadmin')) {
+    const hashedInitial = await hashInitialClients([INITIAL_CLIENTS[0]]);
+    clients = [...hashedInitial, ...clients];
   }
   return clients;
 }
@@ -99,7 +106,7 @@ export function useProgramData() {
   }, []);
 
   const addClient = useCallback(
-    async (name: string, email: string, password: string, role: 'coach' | 'trainee' = 'trainee') => {
+    async (name: string, email: string, password: string, role: UserRole = 'trainee', tenantId?: string) => {
       const hashed = await hashPassword(password);
       const newClient: Client = {
         id: Math.random().toString(36).substring(7),
@@ -107,9 +114,11 @@ export function useProgramData() {
         email,
         password: hashed,
         role,
+        tenantId,
         programs: [],
       };
       updateClients([...clients, newClient]);
+      return newClient;
     },
     [clients, updateClients]
   );
@@ -156,10 +165,6 @@ export function useProgramData() {
     [clients, updateClients]
   );
 
-  /**
-   * Mark a program as archived. If the archived program was the client's active
-   * program, clear `activeProgramId` so the coach can build a fresh block.
-   */
   const archiveProgram = useCallback(
     (clientId: string, programId: string) => {
       const updated = clients.map((c) => {
@@ -180,6 +185,17 @@ export function useProgramData() {
     [clients, updateClients]
   );
 
+  /**
+   * Filter clients by tenant. Superadmin sees all; coaches see only their tenant.
+   */
+  const getClientsForTenant = useCallback(
+    (user: Client): Client[] => {
+      if (user.role === 'superadmin') return clients;
+      return clients.filter((c) => c.tenantId === user.tenantId && c.id !== user.id);
+    },
+    [clients]
+  );
+
   return {
     clients,
     isBootstrapping,
@@ -189,5 +205,6 @@ export function useProgramData() {
     deleteClient,
     resetPassword,
     archiveProgram,
+    getClientsForTenant,
   };
 }

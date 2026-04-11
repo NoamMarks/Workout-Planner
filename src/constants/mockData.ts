@@ -1,5 +1,7 @@
 import type { ProgramColumn, Program, Client } from '../types';
 
+export const SUPERADMIN_EMAIL = 'noammrks@gmail.com';
+
 export const DEFAULT_COLUMNS: ProgramColumn[] = [
   { id: 'sets',        label: 'Sets',       type: 'plan' },
   { id: 'reps',        label: 'Reps',       type: 'plan' },
@@ -10,7 +12,7 @@ export const DEFAULT_COLUMNS: ProgramColumn[] = [
   { id: 'notes',       label: 'Notes',      type: 'actual' },
 ];
 
-export function createEmptyProgram(name: string): Program {
+export function createEmptyProgram(name: string, tenantId?: string): Program {
   return {
     id: Math.random().toString(36).substring(7),
     name,
@@ -18,10 +20,11 @@ export function createEmptyProgram(name: string): Program {
     columns: [...DEFAULT_COLUMNS],
     status: 'active',
     createdAt: new Date().toISOString(),
+    tenantId,
   };
 }
 
-export function createDefaultProgram(): Program {
+export function createDefaultProgram(tenantId?: string): Program {
   const dayNames = ['Day A', 'Day B', 'Day C', 'Day D'];
   return {
     id: Math.random().toString(36).substring(7),
@@ -29,6 +32,7 @@ export function createDefaultProgram(): Program {
     columns: [...DEFAULT_COLUMNS],
     status: 'active',
     createdAt: new Date().toISOString(),
+    tenantId,
     weeks: [
       {
         id: Math.random().toString(36).substring(7),
@@ -50,6 +54,7 @@ export const MOCK_PROGRAM: Program = {
   status: 'active',
   createdAt: new Date().toISOString(),
   columns: [...DEFAULT_COLUMNS],
+  tenantId: 'coach1',
   weeks: Array.from({ length: 4 }).map((_, wIdx) => ({
     id: `w${wIdx + 1}`,
     weekNumber: wIdx + 1,
@@ -80,19 +85,30 @@ export const MOCK_PROGRAM: Program = {
 
 export const INITIAL_CLIENTS: Client[] = [
   {
+    id: 'superadmin1',
+    name: 'Noam Marks',
+    email: SUPERADMIN_EMAIL,
+    password: '123',
+    role: 'superadmin',
+    tenantId: 'global',
+    programs: [],
+  },
+  {
     id: 'coach1',
     name: 'Coach Noam',
     email: 'coach@example.com',
     password: '123',
-    role: 'coach',
+    role: 'admin',
+    tenantId: 'coach1',
     programs: [],
   },
   {
     id: 'c1',
-    name: 'Noam Marks',
-    email: 'noammrks@gmail.com',
+    name: 'Trainee Alpha',
+    email: 'trainee1@example.com',
     password: '123',
     role: 'trainee',
+    tenantId: 'coach1',
     activeProgramId: 'p1',
     programs: [MOCK_PROGRAM],
   },
@@ -102,6 +118,7 @@ export const INITIAL_CLIENTS: Client[] = [
     email: 'sarah.c@example.com',
     password: '123',
     role: 'trainee',
+    tenantId: 'coach1',
     activeProgramId: 'p1',
     programs: [MOCK_PROGRAM],
   },

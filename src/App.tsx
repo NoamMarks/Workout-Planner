@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Dumbbell, ShieldCheck, Sun, Moon, UserPlus, X, ChevronRight, Users } from 'lucide-react';
+import { Dumbbell, ShieldCheck, Sun, Moon, UserPlus, X, ChevronRight, Users, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 import { useAuth } from './hooks/useAuth';
 import { useProgramData } from './hooks/useProgramData';
 import { TechnicalCard, TechnicalInput, Modal } from './components/ui';
-import { cn } from './lib/utils';
 import { AdminView } from './components/admin/AdminView';
+import { SuperadminView } from './components/admin/SuperadminView';
 import { ClientDashboard } from './components/trainee/ClientDashboard';
 import { WorkoutGridLogger } from './components/trainee/WorkoutGridLogger';
 import { RestTimer } from './components/trainee/RestTimer';
+import { SignupPage } from './components/auth/SignupPage';
+import { ForgotPasswordPage } from './components/auth/ForgotPasswordPage';
 import { checkPasswordStrength } from './lib/crypto';
-import type { Client, WorkoutWeek, WorkoutDay } from './types';
+import type { Client, WorkoutWeek, WorkoutDay, UserRole } from './types';
 
 // ─── Coach: Client list view ─────────────────────────────────────────────────
 
@@ -94,12 +96,16 @@ function ClientListView({
 
 function LandingPage({
   onLogin,
+  onSignup,
+  onForgot,
   loginError,
   isBootstrapping,
   theme,
   onToggleTheme,
 }: {
   onLogin: (email: string, password: string) => void;
+  onSignup: () => void;
+  onForgot: () => void;
   loginError: string;
   isBootstrapping: boolean;
   theme: 'dark' | 'light';
@@ -182,6 +188,23 @@ function LandingPage({
                 >
                   {isBootstrapping ? 'Initialising...' : 'Enter System'}
                 </button>
+
+                <div className="flex justify-between">
+                  <button
+                    onClick={onForgot}
+                    data-testid="goto-forgot-btn"
+                    className="text-xs font-mono text-muted-foreground hover:text-foreground uppercase tracking-widest"
+                  >
+                    Forgot Password?
+                  </button>
+                  <button
+                    onClick={onSignup}
+                    data-testid="goto-signup-btn"
+                    className="text-xs font-mono text-muted-foreground hover:text-foreground uppercase tracking-widest"
+                  >
+                    Sign Up
+                  </button>
+                </div>
               </div>
             </TechnicalCard>
           </motion.div>
@@ -197,24 +220,23 @@ function AddClientModal({
   isOpen,
   onClose,
   onAdd,
-  allowRoleSelection = false,
+  tenantId,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (name: string, email: string, password: string, role: 'coach' | 'trainee') => Promise<void>;
-  allowRoleSelection?: boolean;
+  onAdd: (name: string, email: string, password: string, role: UserRole, tenantId?: string) => Promise<Client>;
+  tenantId?: string;
 }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [role, setRole] = useState<'coach' | 'trainee'>('trainee');
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
 
   const reset = () => {
     setName(''); setEmail(''); setPassword(''); setConfirm('');
-    setRole('trainee'); setErrors([]); setSubmitting(false);
+    setErrors([]); setSubmitting(false);
   };
 
   const handleClose = () => { reset(); onClose(); };
@@ -231,7 +253,7 @@ function AddClientModal({
     if (errs.length > 0) { setErrors(errs); return; }
 
     setSubmitting(true);
-    await onAdd(name.trim(), email.trim(), password, role);
+    await onAdd(name.trim(), email.trim(), password, 'trainee', tenantId);
     reset();
     onClose();
   };
@@ -239,7 +261,7 @@ function AddClientModal({
   const strength = checkPasswordStrength(password);
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title={allowRoleSelection ? 'New User' : 'New Client'}>
+    <Modal isOpen={isOpen} onClose={handleClose} title="New Client">
       <div className="space-y-5">
         {[
           { label: 'Full Name', value: name,     set: setName,     placeholder: 'John Doe',          testId: 'new-client-name',     type: 'text' },
@@ -263,40 +285,14 @@ function AddClientModal({
           </div>
         ))}
 
-        {/* Role selector — coaches only */}
-        {allowRoleSelection && (
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
-              Role
-            </label>
-            <div className="flex gap-3">
-              {(['trainee', 'coach'] as const).map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => setRole(r)}
-                  className={cn(
-                    'flex-1 py-3 text-xs font-bold uppercase tracking-widest border transition-all',
-                    role === r
-                      ? 'bg-foreground text-background border-foreground'
-                      : 'border-border text-muted-foreground hover:border-muted-foreground'
-                  )}
-                >
-                  {r === 'coach' ? 'Coach (Admin)' : 'Trainee'}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Password strength indicator */}
         {password.length > 0 && (
           <div className="space-y-1">
             {strength.errors.map((e) => (
-              <p key={e} className="text-[10px] font-mono text-amber-500">✕ {e}</p>
+              <p key={e} className="text-[10px] font-mono text-amber-500">{e}</p>
             ))}
             {strength.ok && (
-              <p className="text-[10px] font-mono text-green-500">✓ Password meets requirements</p>
+              <p className="text-[10px] font-mono text-green-500">Password meets requirements</p>
             )}
           </div>
         )}
@@ -331,6 +327,8 @@ function AppShell({
   onToggleTheme,
   onLogout,
   onGoAdmin,
+  impersonating,
+  onStopImpersonating,
 }: {
   children: React.ReactNode;
   authenticatedUser: Client;
@@ -338,9 +336,25 @@ function AppShell({
   onToggleTheme: () => void;
   onLogout: () => void;
   onGoAdmin: () => void;
+  impersonating?: Client | null;
+  onStopImpersonating?: () => void;
 }) {
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      {/* Impersonation banner */}
+      {impersonating && (
+        <div className="bg-amber-600 text-white px-4 py-2 text-xs font-mono uppercase tracking-widest flex justify-between items-center">
+          <span>Viewing as: {authenticatedUser.name} (Tenant: {authenticatedUser.tenantId})</span>
+          <button
+            onClick={onStopImpersonating}
+            data-testid="stop-impersonate-btn"
+            className="flex items-center gap-2 px-3 py-1 border border-white/30 hover:bg-white/20 transition-colors"
+          >
+            <ArrowLeft className="w-3 h-3" />
+            Back to Superadmin
+          </button>
+        </div>
+      )}
       <nav className="flex justify-between items-center px-8 py-4 border-b border-border sticky top-0 bg-background/95 backdrop-blur-md z-50">
         <div className="flex items-center space-x-3">
           <div className="w-8 h-8 bg-foreground flex items-center justify-center">
@@ -352,7 +366,7 @@ function AppShell({
           <span className="text-xs font-mono text-muted-foreground hidden sm:block">
             {authenticatedUser.name}
           </span>
-          {authenticatedUser.role === 'coach' && (
+          {authenticatedUser.role === 'admin' && (
             <button
               onClick={onGoAdmin}
               data-testid="admin-btn"
@@ -381,8 +395,8 @@ function AppShell({
 // ─── Root App ────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const { clients, isBootstrapping, updateClients, addClient, saveSession, resetPassword, archiveProgram } = useProgramData();
-  const { authenticatedUser, view, loginError, login, logout, setView } = useAuth();
+  const { clients, isBootstrapping, updateClients, addClient, saveSession, resetPassword, archiveProgram, getClientsForTenant } = useProgramData();
+  const { authenticatedUser, view, loginError, login, logout, setView, impersonating, impersonate, stopImpersonating } = useAuth();
 
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [activeWorkout, setActiveWorkout] = useState<{ week: WorkoutWeek; day: WorkoutDay } | null>(null);
@@ -408,6 +422,12 @@ export default function App() {
     await login(clients, email, password);
   };
 
+  const handleSignupComplete = async (name: string, email: string, password: string, tenantId: string) => {
+    const newUser = await addClient(name, email, password, 'trainee', tenantId);
+    // Auto-login the new user
+    await login(clients.concat(newUser), email, password);
+  };
+
   const handleSaveSession = (updatedDay: WorkoutDay) => {
     if (!selectedClient || !activeWorkout) return;
     const program =
@@ -416,6 +436,11 @@ export default function App() {
     if (!program) return;
     saveSession(selectedClient.id, program.id, activeWorkout.week.id, updatedDay);
     setActiveWorkout(null);
+  };
+
+  const handleAddCoach = async (name: string, email: string, password: string) => {
+    const coachId = Math.random().toString(36).substring(7);
+    return await addClient(name, email, password, 'admin', coachId);
   };
 
   // Keep selectedClient in sync with the clients store (e.g. after coach edits)
@@ -434,17 +459,69 @@ export default function App() {
     }
   }, [authenticatedUser, clients]);
 
+  // Tenant-scoped clients for the current user
+  const tenantClients = authenticatedUser ? getClientsForTenant(authenticatedUser) : [];
+
+  // ── Signup ──────────────────────────────────────────────────────────────
+
+  if (view === 'signup') {
+    return (
+      <SignupPage
+        onComplete={handleSignupComplete}
+        onBack={() => setView('landing')}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
+    );
+  }
+
+  // ── Forgot Password ──────────────────────────────────────────────────
+
+  if (view === 'forgot') {
+    return (
+      <ForgotPasswordPage
+        clients={clients}
+        onResetPassword={resetPassword}
+        onBack={() => setView('landing')}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
+    );
+  }
+
   // ── Landing / Login ────────────────────────────────────────────────────
 
   if (!authenticatedUser || view === 'landing') {
     return (
       <LandingPage
         onLogin={handleLogin}
+        onSignup={() => setView('signup')}
+        onForgot={() => setView('forgot')}
         loginError={loginError}
         isBootstrapping={isBootstrapping}
         theme={theme}
         onToggleTheme={toggleTheme}
       />
+    );
+  }
+
+  // ── Superadmin view ────────────────────────────────────────────────────
+
+  if (view === 'superadmin' && authenticatedUser.role === 'superadmin') {
+    return (
+      <AppShell
+        authenticatedUser={authenticatedUser}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        onLogout={logout}
+        onGoAdmin={() => {}}
+      >
+        <SuperadminView
+          clients={clients}
+          onAddCoach={handleAddCoach}
+          onImpersonate={impersonate}
+        />
+      </AppShell>
     );
   }
 
@@ -463,6 +540,8 @@ export default function App() {
         onToggleTheme={toggleTheme}
         onLogout={logout}
         onGoAdmin={() => setView('admin')}
+        impersonating={impersonating}
+        onStopImpersonating={stopImpersonating}
       >
         <WorkoutGridLogger
           client={selectedClient}
@@ -480,7 +559,7 @@ export default function App() {
   // ── Admin view ─────────────────────────────────────────────────────────
 
   if (view === 'admin') {
-    if (authenticatedUser.role !== 'coach') {
+    if (authenticatedUser.role !== 'admin' && authenticatedUser.role !== 'superadmin') {
       setView('trainee');
       return null;
     }
@@ -491,13 +570,22 @@ export default function App() {
         onToggleTheme={toggleTheme}
         onLogout={logout}
         onGoAdmin={() => setView('admin')}
+        impersonating={impersonating}
+        onStopImpersonating={stopImpersonating}
       >
         <AdminView
           clients={clients}
+          authenticatedUser={authenticatedUser}
           onUpdateClients={updateClients}
           onResetPassword={resetPassword}
           onArchiveProgram={archiveProgram}
-          onBack={() => setView('coach')}
+          onBack={() => {
+            if (impersonating) {
+              stopImpersonating();
+            } else {
+              setView('coach');
+            }
+          }}
         />
       </AppShell>
     );
@@ -513,11 +601,13 @@ export default function App() {
         onToggleTheme={toggleTheme}
         onLogout={logout}
         onGoAdmin={() => setView('admin')}
+        impersonating={impersonating}
+        onStopImpersonating={stopImpersonating}
       >
         <ClientDashboard
           client={selectedClient}
           onBack={() => {
-            if (authenticatedUser.role === 'coach') {
+            if (authenticatedUser.role === 'admin' || impersonating) {
               setSelectedClient(null);
               setView('coach');
             } else {
@@ -532,7 +622,7 @@ export default function App() {
 
   // ── Coach: client list ─────────────────────────────────────────────────
 
-  if (authenticatedUser.role !== 'coach') {
+  if (authenticatedUser.role !== 'admin' && !impersonating) {
     // Trainee with no selectedClient yet (edge case during bootstrap)
     return null;
   }
@@ -544,10 +634,12 @@ export default function App() {
       onToggleTheme={toggleTheme}
       onLogout={logout}
       onGoAdmin={() => setView('admin')}
+      impersonating={impersonating}
+      onStopImpersonating={stopImpersonating}
     >
       <AnimatePresence mode="wait">
         <ClientListView
-          clients={clients}
+          clients={tenantClients}
           onSelectClient={(c) => { setSelectedClient(c); setView('coach'); }}
           onAddClient={() => setIsAddClientOpen(true)}
         />
@@ -555,8 +647,8 @@ export default function App() {
       <AddClientModal
         isOpen={isAddClientOpen}
         onClose={() => setIsAddClientOpen(false)}
-        onAdd={(n, e, p, r) => addClient(n, e, p, r)}
-        allowRoleSelection
+        onAdd={addClient}
+        tenantId={authenticatedUser.tenantId}
       />
     </AppShell>
   );

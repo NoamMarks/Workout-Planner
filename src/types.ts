@@ -47,16 +47,31 @@ export interface Program {
   archivedAt?: string;
   /** ISO timestamp set when the program is created */
   createdAt?: string;
+  /** Tenant isolation — programs belong to the coach who created them */
+  tenantId?: string;
 }
+
+export type UserRole = 'superadmin' | 'admin' | 'trainee';
 
 export interface Client {
   id: string;
   name: string;
   email: string;
   password?: string;
-  role: 'coach' | 'trainee';
+  role: UserRole;
+  /** Tenant isolation key — 'global' for superadmin, coach-id for admins, inherited for trainees */
+  tenantId?: string;
   activeProgramId?: string;
   programs: Program[];
 }
 
-export type AppView = 'landing' | 'coach' | 'trainee' | 'admin';
+/** Invite code created by a coach to onboard new trainees */
+export interface InviteCode {
+  id: string;
+  code: string;
+  tenantId: string;
+  coachId: string;
+  createdAt: string;
+}
+
+export type AppView = 'landing' | 'signup' | 'forgot' | 'superadmin' | 'coach' | 'trainee' | 'admin';

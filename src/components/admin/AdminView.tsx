@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Trash2, KeyRound, Archive } from 'lucide-react';
+import { ArrowLeft, Trash2, KeyRound, Archive, Link2, Copy, Check } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ProgramEditor } from './ProgramEditor';
 import { cn } from '../../lib/utils';
 import { createDefaultProgram } from '../../constants/mockData';
 import { checkPasswordStrength } from '../../lib/crypto';
-import type { Client, Program } from '../../types';
+import { createInviteCode, getInviteCodesForCoach, deleteInviteCode } from '../../lib/inviteCodes';
+import type { Client, Program, InviteCode } from '../../types';
 
 const activeProgramOf = (c: Client | null): Program | null =>
   c?.programs.find((p) => p.status !== 'archived') ?? null;
 
 interface AdminViewProps {
   clients: Client[];
+  authenticatedUser: Client;
   onUpdateClients: (clients: Client[]) => void;
   onResetPassword: (clientId: string, newPassword: string) => Promise<void>;
   onArchiveProgram: (clientId: string, programId: string) => void;
@@ -20,15 +22,28 @@ interface AdminViewProps {
 
 export function AdminView({
   clients,
+  authenticatedUser,
   onUpdateClients,
   onResetPassword,
   onArchiveProgram,
   onBack,
 }: AdminViewProps) {
-  const trainees = clients.filter((c) => c.role === 'trainee');
+  // Tenant-scoped trainees only
+  const trainees = clients.filter(
+    (c) => c.role === 'trainee' && c.tenantId === authenticatedUser.tenantId
+  );
 
   const [selectedClient, setSelectedClient] = useState<Client | null>(trainees[0] ?? null);
   const [editingProgram, setEditingProgram] = useState<Program | null>(activeProgramOf(trainees[0] ?? null));
+
+  // Invite code state
+  const [inviteCodes, setInviteCodes] = useState<InviteCode[]>([]);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  // Load invite codes
+  useEffect(() => {
+    setInviteCodes(getInviteCodesForCoach(authenticatedUser.id));
+  }, [authenticatedUser.id]);
 
   // Keep the editing program in sync with the live store after archive/save
   useEffect(() => {
@@ -49,7 +64,7 @@ export function AdminView({
 
   const handleCreateProgram = () => {
     if (!selectedClient) return;
-    const newProgram = createDefaultProgram();
+    const newProgram = createDefaultProgram(authenticatedUser.tenantId);
     const updatedClients = clients.map((c) =>
       c.id === selectedClient.id
         ? { ...c, programs: [...c.programs, newProgram], activeProgramId: newProgram.id }
@@ -86,7 +101,9 @@ export function AdminView({
     const remaining = clients.filter((c) => c.id !== clientId);
     onUpdateClients(remaining);
     if (selectedClient?.id === clientId) {
-      const nextTrainee = remaining.filter((c) => c.role === 'trainee')[0] ?? null;
+      const nextTrainee = remaining.filter(
+        (c) => c.role === 'trainee' && c.tenantId === authenticatedUser.tenantId
+      )[0] ?? null;
       setSelectedClient(nextTrainee);
       setEditingProgram(nextTrainee?.programs[0] ?? null);
     }
@@ -101,6 +118,22 @@ export function AdminView({
     );
     setEditingProgram(updated);
     onUpdateClients(updatedClients);
+  };
+
+  const handleGenerateInvite = () => {
+    const invite = createInviteCode(authenticatedUser.id, authenticatedUser.tenantId ?? authenticatedUser.id);
+    setInviteCodes((prev) => [...prev, invite]);
+  };
+
+  const handleDeleteInvite = (codeId: string) => {
+    deleteInviteCode(codeId);
+    setInviteCodes((prev) => prev.filter((c) => c.id !== codeId));
+  };
+
+  const handleCopy = async (code: string) => {
+    await navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(null), 2000);
   };
 
   return (
@@ -125,6 +158,51 @@ export function AdminView({
           </div>
         </div>
       </header>
+
+      {/* Invite Codes Section */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-mono uppercase text-muted-foreground tracking-widest">
+            Invite Codes
+          </h3>
+          <button
+            onClick={handleGenerateInvite}
+            data-testid="generate-invite-btn"
+            className="flex items-center gap-2 px-4 py-2 text-[10px] font-mono uppercase tracking-widest border border-border hover:border-muted-foreground transition-all"
+          >
+            <Link2 className="w-3 h-3" />
+            Generate Code
+          </button>
+        </div>
+        {inviteCodes.length > 0 && (
+          <div className="flex flex-wrap gap-3">
+            {inviteCodes.map((inv) => (
+              <div
+                key={inv.id}
+                className="flex items-center gap-2 px-4 py-2.5 bg-muted/30 border border-border text-sm font-mono"
+              >
+                <span className="tracking-widest font-bold" data-testid={`invite-code-${inv.id}`}>
+                  {inv.code}
+                </span>
+                <button
+                  onClick={() => void handleCopy(inv.code)}
+                  className="p-1 text-muted-foreground hover:text-foreground"
+                  title="Copy code"
+                >
+                  {copiedCode === inv.code ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                </button>
+                <button
+                  onClick={() => handleDeleteInvite(inv.id)}
+                  className="p-1 text-muted-foreground hover:text-red-500"
+                  title="Delete code"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="grid grid-cols-[300px_1fr] gap-12">
         {/* Client list */}
@@ -172,7 +250,6 @@ export function AdminView({
         <div className="space-y-6">
           {editingProgram ? (
             <>
-              {/* Archive bar */}
               <div className="flex justify-end">
                 <button
                   onClick={handleArchiveProgram}

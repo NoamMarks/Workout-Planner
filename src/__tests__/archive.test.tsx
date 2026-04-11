@@ -61,8 +61,18 @@ const TRAINEE: Client = {
   name: 'Noam',
   email: 'noam@example.com',
   role: 'trainee',
+  tenantId: 'coach1',
   activeProgramId: 'p-active',
   programs: [ACTIVE_PROGRAM, ARCHIVED_PROGRAM],
+};
+
+const COACH: Client = {
+  id: 'coach1',
+  name: 'Coach',
+  email: 'coach@test.com',
+  role: 'admin',
+  tenantId: 'coach1',
+  programs: [],
 };
 
 // ─── ClientDashboard tabs ────────────────────────────────────────────────────
@@ -112,6 +122,7 @@ describe('AdminView archive action', () => {
     render(
       <AdminView
         clients={[TRAINEE]}
+        authenticatedUser={COACH}
         onUpdateClients={vi.fn()}
         onResetPassword={vi.fn().mockResolvedValue(undefined)}
         onArchiveProgram={onArchive}
@@ -132,6 +143,7 @@ describe('AdminView archive action', () => {
     render(
       <AdminView
         clients={[archivedOnly]}
+        authenticatedUser={COACH}
         onUpdateClients={onUpdate}
         onResetPassword={vi.fn().mockResolvedValue(undefined)}
         onArchiveProgram={onArchive}
