@@ -74,8 +74,7 @@ The following accounts are seeded on first launch. Passwords are stored as SHA-2
 | Role    | Email                | Seed password |
 |---------|----------------------|---------------|
 | Coach   | coach@example.com    | `123`         |
-| Trainee | noammrks@gmail.com   | `123`         |
-| Trainee | sarah.c@example.com  | `123`         |
+| Trainee | Trainee@example.com   | `123`         |
 
 > **Note:** These seed credentials are for local development only. Change or remove them before deploying to a shared environment. New accounts created via the UI require a password of at least 8 characters with at least one letter and one number.
 
