@@ -1,9 +1,11 @@
 /**
  * OTP Verification Service
  *
- * Generates 6-digit codes and "sends" them via console log.
- * In production, replace sendVerificationEmail with a real email API.
+ * Generates 6-digit codes and delivers them via Resend API when configured,
+ * falling back to console log when the API key is absent.
  */
+
+import { sendVerificationEmailViaResend, sendPasswordResetEmailViaResend } from './email';
 
 /** Generate a random 6-digit numeric code. */
 export function generateOTP(): string {
@@ -11,14 +13,11 @@ export function generateOTP(): string {
 }
 
 /**
- * Simulate sending a verification email.
- * Logs the code to the console so the developer can retrieve it during testing.
+ * Send a signup verification email.
+ * Uses Resend when VITE_RESEND_API_KEY is set, otherwise logs to console.
  */
 export function sendVerificationEmail(email: string, code: string): void {
-  console.log(
-    `%c[IronTrack Verification] Code for ${email}: ${code}`,
-    'color: #22c55e; font-weight: bold; font-size: 14px;'
-  );
+  void sendVerificationEmailViaResend(email, code);
 }
 
 // ─── Reset Token Service ────────────────────────────────────────────────────
@@ -90,12 +89,9 @@ export function consumeResetToken(email: string, code: string): void {
 }
 
 /**
- * Simulate sending a password reset email.
- * Distinct console header per the spec.
+ * Send a password reset email.
+ * Uses Resend when VITE_RESEND_API_KEY is set, otherwise logs to console.
  */
 export function sendPasswordResetEmail(email: string, code: string): void {
-  console.log(
-    `%c[PASSWORD RESET CODE] Code for ${email}: ${code}`,
-    'color: #f59e0b; font-weight: bold; font-size: 14px;'
-  );
+  void sendPasswordResetEmailViaResend(email, code);
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Client, Program, WorkoutDay, ExercisePlan, ProgramColumn, UserRole } from '../types';
-import { INITIAL_CLIENTS, DEFAULT_COLUMNS } from '../constants/mockData';
+import { INITIAL_CLIENTS, DEFAULT_COLUMNS, SUPERADMIN_EMAIL } from '../constants/mockData';
 import { hashPassword, isHashed } from '../lib/crypto';
 
 const STORAGE_KEY = 'irontrack_clients';
@@ -53,11 +53,28 @@ async function migrateClients(raw: unknown[]): Promise<Client[]> {
     })
   );
 
-  // Ensure at least one admin exists
-  if (!clients.some((c) => c.role === 'admin' || c.role === 'superadmin')) {
-    const hashedInitial = await hashInitialClients([INITIAL_CLIENTS[0]]);
-    clients = [...hashedInitial, ...clients];
+  // Force-migrate the superadmin account — stale localStorage may have the
+  // wrong role/tenantId from before the multi-tenant sprint.
+  const superadminEmail = SUPERADMIN_EMAIL.toLowerCase();
+  const existingSA = clients.find((c) => c.email.toLowerCase() === superadminEmail);
+  if (existingSA) {
+    existingSA.role = 'superadmin';
+    existingSA.tenantId = 'global';
+  } else {
+    // Superadmin doesn't exist at all — bootstrap from seed data
+    const hashedSA = await hashInitialClients([INITIAL_CLIENTS[0]]);
+    clients = [...hashedSA, ...clients];
   }
+
+  // Ensure at least one admin (coach) exists
+  if (!clients.some((c) => c.role === 'admin')) {
+    const coachSeed = INITIAL_CLIENTS.find((c) => c.role === 'admin');
+    if (coachSeed) {
+      const hashedCoach = await hashInitialClients([coachSeed]);
+      clients = [...clients, ...hashedCoach];
+    }
+  }
+
   return clients;
 }
 
