@@ -29,6 +29,14 @@ export interface ParsedTimer {
   seconds: number;
 }
 
+/** No rest interval should ever exceed 60 minutes; clamp to keep the timer sane. */
+const MAX_REST_SECONDS = 60 * 60;
+
+function clampSeconds(seconds: number): number | null {
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return Math.min(seconds, MAX_REST_SECONDS);
+}
+
 export function parseTimerCommand(transcript: string): ParsedTimer | null {
   const raw = transcript.toLowerCase().trim();
 
@@ -44,7 +52,8 @@ export function parseTimerCommand(transcript: string): ParsedTimer | null {
     const mins = toNumber(compoundMatch[1]);
     const secs = toNumber(compoundMatch[2]);
     if (mins !== null && secs !== null) {
-      return { seconds: mins * 60 + secs };
+      const clamped = clampSeconds(mins * 60 + secs);
+      if (clamped !== null) return { seconds: clamped };
     }
   }
 
@@ -53,7 +62,10 @@ export function parseTimerCommand(transcript: string): ParsedTimer | null {
   const minMatch = stripped.match(minRe);
   if (minMatch) {
     const mins = toNumber(minMatch[1]);
-    if (mins !== null && mins > 0) return { seconds: mins * 60 };
+    if (mins !== null && mins > 0) {
+      const clamped = clampSeconds(mins * 60);
+      if (clamped !== null) return { seconds: clamped };
+    }
   }
 
   // Try: "<N> seconds"
@@ -61,7 +73,10 @@ export function parseTimerCommand(transcript: string): ParsedTimer | null {
   const secMatch = stripped.match(secRe);
   if (secMatch) {
     const secs = toNumber(secMatch[1]);
-    if (secs !== null && secs > 0) return { seconds: secs };
+    if (secs !== null && secs > 0) {
+      const clamped = clampSeconds(secs);
+      if (clamped !== null) return { seconds: clamped };
+    }
   }
 
   return null;

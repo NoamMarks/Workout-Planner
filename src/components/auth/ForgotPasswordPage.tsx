@@ -137,7 +137,7 @@ export function ForgotPasswordPage({
                     <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
                       Email Address
                     </label>
-                    <div className="bg-muted/30 p-4 border border-border">
+                    <div className="field-wrap">
                       <TechnicalInput
                         value={email}
                         onChange={setEmail}
@@ -151,7 +151,7 @@ export function ForgotPasswordPage({
                     onClick={handleEmailSubmit}
                     disabled={!email.trim()}
                     data-testid="forgot-email-submit"
-                    className="w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="btn-press w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest rounded-input hover:opacity-90 shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Send Reset Code
                   </button>
@@ -173,7 +173,7 @@ export function ForgotPasswordPage({
                     <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
                       Reset Code
                     </label>
-                    <div className="bg-muted/30 p-4 border border-border">
+                    <div className="field-wrap">
                       <TechnicalInput
                         value={code}
                         onChange={setCode}
@@ -194,7 +194,7 @@ export function ForgotPasswordPage({
                     onClick={handleCodeSubmit}
                     disabled={code.trim().length !== 6}
                     data-testid="forgot-code-submit"
-                    className="w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="btn-press w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest rounded-input hover:opacity-90 shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Verify Code
                   </button>
@@ -216,7 +216,7 @@ export function ForgotPasswordPage({
                       <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
                         {label}
                       </label>
-                      <div className="bg-muted/30 p-4 border border-border">
+                      <div className="field-wrap">
                         <TechnicalInput
                           value={value}
                           onChange={set}
@@ -251,7 +251,7 @@ export function ForgotPasswordPage({
                     onClick={handlePasswordSubmit}
                     disabled={submitting}
                     data-testid="forgot-password-submit"
-                    className="w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-all shadow-lg disabled:opacity-40"
+                    className="btn-press w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest rounded-input hover:opacity-90 shadow-lg disabled:opacity-40"
                   >
                     {submitting ? 'Updating...' : 'Update Password'}
                   </button>
@@ -271,7 +271,7 @@ export function ForgotPasswordPage({
                   <button
                     onClick={onBack}
                     data-testid="forgot-back-to-login"
-                    className="w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-all shadow-lg"
+                    className="btn-press w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest rounded-input hover:opacity-90 shadow-lg"
                   >
                     Back to Login
                   </button>

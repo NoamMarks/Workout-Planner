@@ -6,6 +6,7 @@ interface TechnicalInputProps {
   placeholder?: string;
   className?: string;
   type?: string;
+  readOnly?: boolean;
   'data-testid'?: string;
 }
 
@@ -15,6 +16,7 @@ export function TechnicalInput({
   placeholder,
   className,
   type = 'text',
+  readOnly = false,
   'data-testid': testId,
 }: TechnicalInputProps) {
   return (
@@ -23,9 +25,11 @@ export function TechnicalInput({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
+      readOnly={readOnly}
       data-testid={testId}
       className={cn(
         'bg-transparent border-none outline-none focus:ring-0 text-foreground font-mono text-sm w-full placeholder:text-muted-foreground',
+        readOnly && 'cursor-not-allowed opacity-80',
         className
       )}
     />

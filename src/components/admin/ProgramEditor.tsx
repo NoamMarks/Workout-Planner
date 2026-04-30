@@ -52,7 +52,37 @@ export function ProgramEditor({ program, onChange }: ProgramEditorProps) {
   };
 
   const deleteColumn = (colId: string) => {
-    onChange({ ...program, columns: allCols.filter((c) => c.id !== colId) });
+    // Strip the column AND any orphaned values keyed by it across every exercise.
+    // Without this, deleted custom columns leave ghost data in localStorage forever.
+    const LEGACY_FIELDS = new Set([
+      'sets', 'reps', 'expectedRpe', 'weightRange',
+      'actualLoad', 'actualRpe', 'notes', 'videoUrl',
+    ]);
+
+    const stripExercise = (ex: ExercisePlan): ExercisePlan => {
+      const next: ExercisePlan = { ...ex };
+      if (LEGACY_FIELDS.has(colId)) {
+        delete (next as unknown as Record<string, unknown>)[colId];
+      }
+      if (next.values && colId in next.values) {
+        const cleaned = { ...next.values };
+        delete cleaned[colId];
+        next.values = cleaned;
+      }
+      return next;
+    };
+
+    onChange({
+      ...program,
+      columns: allCols.filter((c) => c.id !== colId),
+      weeks: program.weeks.map((w) => ({
+        ...w,
+        days: w.days.map((d) => ({
+          ...d,
+          exercises: d.exercises.map(stripExercise),
+        })),
+      })),
+    });
   };
 
   // ── Week ops ────────────────────────────────────────────────────────────

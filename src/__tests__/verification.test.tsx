@@ -6,11 +6,21 @@ import { SignupPage } from '../components/auth/SignupPage';
 vi.mock('../lib/inviteCodes', () => ({
   lookupInviteCode: (code: string) =>
     code.trim().toUpperCase() === 'VALID123'
-      ? { id: 'inv1', code: 'VALID123', tenantId: 'tenant-A', coachId: 'coachA', createdAt: '' }
+      ? {
+          id: 'inv1',
+          code: 'VALID123',
+          tenantId: 'tenant-A',
+          coachId: 'coachA',
+          coachName: 'Coach Alpha',
+          createdAt: '',
+          useCount: 0,
+        }
       : null,
   createInviteCode: vi.fn(),
   getInviteCodesForCoach: vi.fn(() => []),
   deleteInviteCode: vi.fn(),
+  consumeInviteCode: vi.fn(),
+  buildInviteLink: (code: string) => `http://localhost/signup?invite=${code}`,
 }));
 
 // Capture the OTP that gets "sent"

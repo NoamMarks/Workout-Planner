@@ -1,10 +1,12 @@
-import { useState } from 'react';
-import { Dumbbell, Sun, Moon, ArrowLeft } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Dumbbell, Sun, Moon, ArrowLeft, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import { TechnicalCard, TechnicalInput } from '../ui';
+import { cn } from '../../lib/utils';
 import { checkPasswordStrength } from '../../lib/crypto';
-import { lookupInviteCode } from '../../lib/inviteCodes';
+import { lookupInviteCode, consumeInviteCode } from '../../lib/inviteCodes';
 import { generateOTP, sendVerificationEmail } from '../../lib/verification';
+import type { InviteCode } from '../../types';
 
 interface SignupPageProps {
   onComplete: (name: string, email: string, password: string, tenantId: string) => Promise<void>;
@@ -26,6 +28,11 @@ export function SignupPage({ onComplete, onBack, theme, onToggleTheme }: SignupP
   const [inviteCode, setInviteCode] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
 
+  // Magic-link state — populated when ?invite=CODE is in the URL
+  const [prefilledInvite, setPrefilledInvite] = useState<InviteCode | null>(null);
+  const [linkInviteRaw, setLinkInviteRaw] = useState<string>('');
+  const [linkInviteInvalid, setLinkInviteInvalid] = useState(false);
+
   // OTP state
   const [otp, setOtp] = useState('');
   const [generatedOtp, setGeneratedOtp] = useState('');
@@ -34,6 +41,26 @@ export function SignupPage({ onComplete, onBack, theme, onToggleTheme }: SignupP
   const [submitting, setSubmitting] = useState(false);
 
   const strength = checkPasswordStrength(password);
+
+  // Read ?invite= from the URL on mount; auto-fill the field and surface
+  // the coach's name in a welcome banner.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('invite');
+    if (!raw) return;
+    setLinkInviteRaw(raw);
+    setInviteCode(raw);
+    const looked = lookupInviteCode(raw);
+    if (looked) {
+      setPrefilledInvite(looked);
+    } else {
+      setLinkInviteInvalid(true);
+    }
+  }, []);
+
+  // True when this signup arrived via a magic link (locks the field even if invalid).
+  const isMagicLink = linkInviteRaw !== '';
 
   const handleSubmitForm = () => {
     const errs: string[] = [];
@@ -66,7 +93,14 @@ export function SignupPage({ onComplete, onBack, theme, onToggleTheme }: SignupP
     }
     setOtpError('');
     setSubmitting(true);
-    await onComplete(name.trim(), email.trim(), password, resolvedTenantId);
+    try {
+      await onComplete(name.trim(), email.trim(), password, resolvedTenantId);
+      // Only consume the invite once the account creation succeeded — if onComplete
+      // throws we leave the use count alone.
+      consumeInviteCode(inviteCode.trim());
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -103,25 +137,59 @@ export function SignupPage({ onComplete, onBack, theme, onToggleTheme }: SignupP
 
           {step === 'form' && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+              {/* Magic-link welcome banner */}
+              {prefilledInvite && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  data-testid="invite-welcome-banner"
+                  className="mb-5 flex items-center gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3"
+                >
+                  <Sparkles className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <p className="text-xs font-mono text-foreground">
+                    {prefilledInvite.coachName ? (
+                      <>You've been invited to join <span className="font-bold">{prefilledInvite.coachName}</span>'s training environment.</>
+                    ) : (
+                      <>You've been invited to a coach's training environment.</>
+                    )}
+                  </p>
+                </motion.div>
+              )}
+              {linkInviteInvalid && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  data-testid="invite-invalid-banner"
+                  className="mb-5 flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3"
+                >
+                  <p className="text-xs font-mono text-amber-500">
+                    This invite link is invalid or has been used up. Ask your coach for a new one.
+                  </p>
+                </motion.div>
+              )}
               <TechnicalCard>
                 <div className="p-8 space-y-5">
                   {[
-                    { label: 'Full Name', value: name, set: setName, placeholder: 'John Doe', testId: 'signup-name', type: 'text' },
-                    { label: 'Email', value: email, set: setEmail, placeholder: 'john@example.com', testId: 'signup-email', type: 'email' },
-                    { label: 'Password', value: password, set: setPassword, placeholder: 'Min 8 chars, 1 letter, 1 number', testId: 'signup-password', type: 'password' },
-                    { label: 'Confirm Password', value: confirm, set: setConfirm, placeholder: '••••••••', testId: 'signup-confirm', type: 'password' },
-                    { label: 'Coach Invite Code', value: inviteCode, set: setInviteCode, placeholder: 'e.g. A1B2C3D4', testId: 'signup-invite-code', type: 'text' },
-                  ].map(({ label, value, set, placeholder, testId, type }) => (
+                    { label: 'Full Name', value: name, set: setName, placeholder: 'John Doe', testId: 'signup-name', type: 'text', readOnly: false },
+                    { label: 'Email', value: email, set: setEmail, placeholder: 'john@example.com', testId: 'signup-email', type: 'email', readOnly: false },
+                    { label: 'Password', value: password, set: setPassword, placeholder: 'Min 8 chars, 1 letter, 1 number', testId: 'signup-password', type: 'password', readOnly: false },
+                    { label: 'Confirm Password', value: confirm, set: setConfirm, placeholder: '••••••••', testId: 'signup-confirm', type: 'password', readOnly: false },
+                    { label: 'Coach Invite Code', value: inviteCode, set: setInviteCode, placeholder: 'e.g. A1B2C3D4', testId: 'signup-invite-code', type: 'text', readOnly: isMagicLink },
+                  ].map(({ label, value, set, placeholder, testId, type, readOnly }) => (
                     <div key={label} className="space-y-1.5">
                       <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
                         {label}
                       </label>
-                      <div className="bg-muted/30 p-4 border border-border">
+                      <div className={cn(
+                        'field-wrap',
+                        readOnly && 'bg-muted/60',
+                      )}>
                         <TechnicalInput
                           value={value}
                           onChange={set}
                           placeholder={placeholder}
                           type={type}
+                          readOnly={readOnly}
                           data-testid={testId}
                         />
                       </div>
@@ -150,7 +218,7 @@ export function SignupPage({ onComplete, onBack, theme, onToggleTheme }: SignupP
                   <button
                     onClick={handleSubmitForm}
                     data-testid="signup-submit-btn"
-                    className="w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-all shadow-lg"
+                    className="btn-press w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest rounded-input hover:opacity-90 shadow-lg"
                   >
                     Continue
                   </button>
@@ -191,7 +259,7 @@ export function SignupPage({ onComplete, onBack, theme, onToggleTheme }: SignupP
                     onClick={handleVerify}
                     disabled={submitting || otp.length !== 6}
                     data-testid="signup-verify-btn"
-                    className="w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="btn-press w-full bg-accent text-accent-foreground py-4 text-xs font-bold uppercase tracking-widest rounded-input hover:opacity-90 shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {submitting ? 'Creating Account...' : 'Verify & Create Account'}
                   </button>

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { TrendingUp, AlertCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 import {
@@ -24,6 +24,14 @@ export function AnalyticsDashboard({ client }: AnalyticsDashboardProps) {
   const [selectedExerciseId, setSelectedExerciseId] = useState<string>(
     exercises[0]?.id ?? ''
   );
+
+  // Auto-select the first exercise once data arrives, or when the current
+  // selection no longer exists (e.g. last logged session for that exercise was deleted).
+  useEffect(() => {
+    if (exercises.length === 0) return;
+    const stillExists = exercises.some((e) => e.id === selectedExerciseId);
+    if (!stillExists) setSelectedExerciseId(exercises[0].id);
+  }, [exercises, selectedExerciseId]);
 
   const e1rmData = useMemo(
     () => (selectedExerciseId ? aggregateE1RM(client, selectedExerciseId) : []),

@@ -54,12 +54,13 @@ async function migrateClients(raw: unknown[]): Promise<Client[]> {
   );
 
   // Force-migrate the superadmin account — stale localStorage may have the
-  // wrong role/tenantId from before the multi-tenant sprint.
+  // wrong role/tenantId from before the multi-tenant sprint. Only mutate when
+  // actually needed so reload-after-reload doesn't churn through writes.
   const superadminEmail = SUPERADMIN_EMAIL.toLowerCase();
   const existingSA = clients.find((c) => c.email.toLowerCase() === superadminEmail);
   if (existingSA) {
-    existingSA.role = 'superadmin';
-    existingSA.tenantId = 'global';
+    if (existingSA.role !== 'superadmin') existingSA.role = 'superadmin';
+    if (existingSA.tenantId !== 'global') existingSA.tenantId = 'global';
   } else {
     // Superadmin doesn't exist at all — bootstrap from seed data
     const hashedSA = await hashInitialClients([INITIAL_CLIENTS[0]]);
@@ -125,13 +126,27 @@ export function useProgramData() {
   const addClient = useCallback(
     async (name: string, email: string, password: string, role: UserRole = 'trainee', tenantId?: string) => {
       const hashed = await hashPassword(password);
+      const id = Math.random().toString(36).substring(7);
+
+      // Tenant enforcement: every non-superadmin must have a tenantId.
+      // - admin (coach): own id is the tenant root, even if caller forgot to pass one
+      // - trainee: must inherit a coach's tenantId; refuse to create an orphan
+      let resolvedTenantId = tenantId;
+      if (role === 'admin') {
+        resolvedTenantId = tenantId ?? id;
+      } else if (role === 'trainee' && !resolvedTenantId) {
+        throw new Error('addClient: trainee creation requires a tenantId');
+      } else if (role === 'superadmin') {
+        resolvedTenantId = 'global';
+      }
+
       const newClient: Client = {
-        id: Math.random().toString(36).substring(7),
+        id,
         name,
         email,
         password: hashed,
         role,
-        tenantId,
+        tenantId: resolvedTenantId,
         programs: [],
       };
       updateClients([...clients, newClient]);
@@ -150,6 +165,16 @@ export function useProgramData() {
 
   const saveSession = useCallback(
     (clientId: string, programId: string, weekId: string, updatedDay: WorkoutDay) => {
+      // Defensive: refuse the write if the (client, program, week, day) tuple does
+      // not actually exist in the current store, or if the program is archived.
+      // This is the only check we can do client-side; true tenant security needs a backend.
+      const target = clients.find((c) => c.id === clientId);
+      if (!target) return;
+      const targetProgram = target.programs.find((p) => p.id === programId);
+      if (!targetProgram || targetProgram.status === 'archived') return;
+      const targetWeek = targetProgram.weeks.find((w) => w.id === weekId);
+      if (!targetWeek || !targetWeek.days.some((d) => d.id === updatedDay.id)) return;
+
       const stampedDay: WorkoutDay = { ...updatedDay, loggedAt: new Date().toISOString() };
       const updated = clients.map((c) => {
         if (c.id !== clientId) return c;

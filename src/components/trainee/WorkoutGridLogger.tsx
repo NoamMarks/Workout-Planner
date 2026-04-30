@@ -106,7 +106,7 @@ export function WorkoutGridLogger({
           <button
             onClick={handleSave}
             data-testid="save-session-btn"
-            className="bg-green-600 text-white px-8 py-4 text-xs font-bold uppercase tracking-widest flex items-center hover:bg-green-500 transition-all shadow-lg hover:shadow-green-500/20"
+            className="btn-press bg-accent text-accent-foreground px-8 py-4 text-xs font-bold uppercase tracking-widest flex items-center rounded-input hover:opacity-90 shadow-lg hover:shadow-accent/20"
           >
             <Save className="w-4 h-4 mr-2" />
             Save Session
@@ -117,40 +117,44 @@ export function WorkoutGridLogger({
       {/* Grid */}
       <TechnicalCard className="flex-grow overflow-auto border-2">
         <div className="min-w-[1200px]">
-          {/* Header row */}
+          {/* Header row — sticky so the column labels stay visible while scrolling
+              long workouts. The bg/backdrop combo keeps it readable over the rows
+              that scroll underneath. */}
           <div
-            className="grid border-b border-border bg-muted/80 backdrop-blur-md sticky top-0 z-10"
+            className="grid border-b border-border bg-card/85 backdrop-blur-md sticky top-0 z-20 shadow-sm"
             style={{ gridTemplateColumns: gridTemplate }}
           >
-            <div className="p-4 text-[10px] text-muted-foreground font-mono uppercase border-r border-border">
+            <div className="p-4 text-[10px] text-muted-foreground font-mono uppercase tracking-widest border-r border-border">
               #
             </div>
-            <div className="p-4 text-[10px] text-muted-foreground font-mono uppercase border-r border-border">
+            <div className="p-4 text-[10px] text-muted-foreground font-mono uppercase tracking-widest border-r border-border">
               Exercise
             </div>
             {columns.map((col) => (
               <div
                 key={col.id}
                 className={cn(
-                  'p-4 text-[10px] font-mono uppercase border-r border-border text-center',
+                  'p-4 text-[10px] font-mono uppercase tracking-widest border-r border-border text-center',
                   col.type === 'actual' ? 'text-foreground bg-muted/50' : 'text-muted-foreground'
                 )}
               >
                 {col.label}
               </div>
             ))}
-            <div className="p-4 text-[10px] text-muted-foreground font-mono uppercase">Video</div>
+            <div className="p-4 text-[10px] text-muted-foreground font-mono uppercase tracking-widest">
+              Video
+            </div>
           </div>
 
           {/* Exercise rows */}
           {exercises.map((ex, idx) => (
             <div
               key={ex.id}
-              className="grid border-b border-border hover:bg-muted/30 transition-colors group"
+              className="grid border-b border-border hover:bg-white/5 transition-colors group"
               style={{ gridTemplateColumns: gridTemplate }}
               data-testid={`exercise-row-${idx}`}
             >
-              <div className="p-4 text-xs text-muted-foreground font-mono border-r border-border flex items-center justify-center">
+              <div className="p-4 text-xs text-muted-foreground font-mono tabular-nums border-r border-border flex items-center justify-center">
                 {String(idx + 1).padStart(2, '0')}
               </div>
               <div className="p-4 text-xs text-foreground font-bold border-r border-border flex items-center">
@@ -162,14 +166,14 @@ export function WorkoutGridLogger({
                   key={col.id}
                   className={cn(
                     'p-4 border-r border-border flex items-center justify-center',
-                    col.type === 'actual' ? 'bg-muted/10 group-hover:bg-muted/20 transition-colors' : ''
+                    col.type === 'actual' ? 'bg-muted/10 group-hover:bg-muted/30 transition-colors' : ''
                   )}
                 >
                   {col.type === 'plan' ? (
                     col.id === 'expectedRpe' ? (
                       <RPEBadge value={getExerciseValue(ex, col.id) as string | number | undefined} />
                     ) : (
-                      <span className="text-xs text-muted-foreground font-mono">
+                      <span className="text-xs text-muted-foreground font-mono tabular-nums">
                         {String(getExerciseValue(ex, col.id) ?? '-') || '-'}
                       </span>
                     )
@@ -179,7 +183,7 @@ export function WorkoutGridLogger({
                         value={String(getExerciseValue(ex, col.id) ?? '')}
                         onChange={(val) => updateExercise(ex.id, col.id, val)}
                         placeholder=""
-                        className="text-center"
+                        className="text-center tabular-nums"
                         data-testid={`input-${ex.id}-${col.id}`}
                       />
                       {col.id === 'actualLoad' && (

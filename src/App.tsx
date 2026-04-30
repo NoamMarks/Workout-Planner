@@ -52,12 +52,15 @@ function ClientListView({
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {trainees.map((client, idx) => (
+        <AnimatePresence initial={false}>
+          {trainees.map((client, idx) => (
           <motion.div
             key={client.id}
+            layout
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.05 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ delay: idx * 0.04, duration: 0.25 }}
           >
             <TechnicalCard className="group cursor-pointer hover:border-muted-foreground transition-all hover:shadow-xl hover:-translate-y-1">
               <div onClick={() => onSelectClient(client)} className="p-8">
@@ -86,7 +89,8 @@ function ClientListView({
               </div>
             </TechnicalCard>
           </motion.div>
-        ))}
+          ))}
+        </AnimatePresence>
       </div>
     </div>
   );
@@ -150,7 +154,7 @@ function LandingPage({
                   <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
                     Email
                   </label>
-                  <div className="bg-muted/30 p-4 border border-border">
+                  <div className="field-wrap">
                     <TechnicalInput
                       value={email}
                       onChange={setEmail}
@@ -165,7 +169,7 @@ function LandingPage({
                   <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
                     Password
                   </label>
-                  <div className="bg-muted/30 p-4 border border-border">
+                  <div className="field-wrap">
                     <TechnicalInput
                       value={password}
                       onChange={setPassword}
@@ -184,7 +188,7 @@ function LandingPage({
                   onClick={() => onLogin(email, password)}
                   disabled={isBootstrapping}
                   data-testid="login-btn"
-                  className="w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-all shadow-lg disabled:opacity-40 disabled:cursor-wait"
+                  className="btn-press w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest rounded-input hover:opacity-90 shadow-lg disabled:opacity-40 disabled:cursor-wait"
                 >
                   {isBootstrapping ? 'Initialising...' : 'Enter System'}
                 </button>
@@ -273,7 +277,7 @@ function AddClientModal({
             <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
               {label}
             </label>
-            <div className="bg-muted/30 p-4 border border-border">
+            <div className="field-wrap">
               <TechnicalInput
                 value={value}
                 onChange={set}
@@ -309,7 +313,7 @@ function AddClientModal({
         <button
           onClick={handleAdd}
           disabled={submitting}
-          className="w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-all disabled:opacity-50"
+          className="btn-press w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest rounded-input hover:opacity-90 disabled:opacity-50"
         >
           {submitting ? 'Creating...' : 'Create Client'}
         </button>
@@ -387,7 +391,15 @@ function AppShell({
           </button>
         </div>
       </nav>
-      <main className="flex-1 p-8 max-w-[1600px] mx-auto w-full">{children}</main>
+      <motion.main
+        key={authenticatedUser.id}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.22, ease: 'easeOut' }}
+        className="flex-1 p-8 max-w-[1600px] mx-auto w-full"
+      >
+        {children}
+      </motion.main>
     </div>
   );
 }
@@ -416,6 +428,18 @@ export default function App() {
     if (saved) setTheme(saved);
   }, []);
 
+  // Magic-link routing: when the page loads at /signup or with ?invite=...
+  // route directly to the signup view. SignupPage reads the param itself.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const isSignupPath = window.location.pathname.startsWith('/signup');
+    const hasInvite = params.has('invite');
+    if (isSignupPath || hasInvite) setView('signup');
+    // setView is stable (useCallback) but excluding it keeps this strictly mount-only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
 
   const handleLogin = async (email: string, password: string) => {
@@ -439,8 +463,9 @@ export default function App() {
   };
 
   const handleAddCoach = async (name: string, email: string, password: string) => {
-    const coachId = Math.random().toString(36).substring(7);
-    return await addClient(name, email, password, 'admin', coachId);
+    // Coaches act as their own tenant root; addClient defaults tenantId to the
+    // generated id when role==='admin', so a new coach satisfies id===tenantId.
+    return await addClient(name, email, password, 'admin');
   };
 
   // Keep selectedClient in sync with the clients store (e.g. after coach edits)

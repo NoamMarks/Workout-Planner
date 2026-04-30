@@ -19,13 +19,14 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            className="absolute inset-0 bg-background/70 backdrop-blur-md"
           />
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            initial={{ opacity: 0, scale: 0.96, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-md bg-card border border-border p-8 shadow-2xl rounded-sm"
+            exit={{ opacity: 0, scale: 0.96, y: 16 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+            className="relative w-full max-w-md bg-card/80 backdrop-blur-md border border-white/10 p-8 shadow-2xl rounded-card"
           >
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold italic font-serif uppercase tracking-tighter">

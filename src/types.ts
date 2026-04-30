@@ -71,7 +71,13 @@ export interface InviteCode {
   code: string;
   tenantId: string;
   coachId: string;
+  /** Display name shown to the invitee in the welcome banner */
+  coachName?: string;
   createdAt: string;
+  /** Maximum number of accepted signups; undefined means unlimited */
+  maxUses?: number;
+  /** How many trainees have signed up using this code so far */
+  useCount?: number;
 }
 
 export type AppView = 'landing' | 'signup' | 'forgot' | 'superadmin' | 'coach' | 'trainee' | 'admin';

@@ -1,16 +1,23 @@
 /**
  * Invite Code management — persisted in localStorage.
- * Each code is permanently linked to a Coach's tenantId.
+ * Each code is permanently linked to a Coach's tenantId and carries metadata
+ * (coachName, optional maxUses) used to render the magic-link signup banner.
  */
 
 import type { InviteCode } from '../types';
 
 const STORAGE_KEY = 'irontrack_invite_codes';
 
+/** Migrate legacy invite records (pre-Sprint-5) to include useCount. */
+function normalize(code: InviteCode): InviteCode {
+  return { useCount: 0, ...code };
+}
+
 function loadCodes(): InviteCode[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as InviteCode[]) : [];
+    if (!raw) return [];
+    return (JSON.parse(raw) as InviteCode[]).map(normalize);
   } catch {
     return [];
   }
@@ -30,14 +37,22 @@ function makeCode(): string {
 }
 
 /** Create a new invite code for a coach. */
-export function createInviteCode(coachId: string, tenantId: string): InviteCode {
+export function createInviteCode(
+  coachId: string,
+  tenantId: string,
+  coachName?: string,
+  maxUses?: number,
+): InviteCode {
   const codes = loadCodes();
   const invite: InviteCode = {
     id: Math.random().toString(36).substring(2, 9),
     code: makeCode(),
     tenantId,
     coachId,
+    coachName,
     createdAt: new Date().toISOString(),
+    maxUses,
+    useCount: 0,
   };
   saveCodes([...codes, invite]);
   return invite;
@@ -48,10 +63,33 @@ export function getInviteCodesForCoach(coachId: string): InviteCode[] {
   return loadCodes().filter((c) => c.coachId === coachId);
 }
 
-/** Look up an invite code by the code string. Returns null if not found. */
+/**
+ * Look up an invite code by code string.
+ * Returns null if the code is unknown OR if it has reached its maxUses cap.
+ */
 export function lookupInviteCode(code: string): InviteCode | null {
   const normalized = code.trim().toUpperCase();
-  return loadCodes().find((c) => c.code === normalized) ?? null;
+  const found = loadCodes().find((c) => c.code === normalized);
+  if (!found) return null;
+  if (found.maxUses !== undefined && (found.useCount ?? 0) >= found.maxUses) {
+    return null;
+  }
+  return found;
+}
+
+/** Increment the use counter for a code after a successful signup. */
+export function consumeInviteCode(code: string): void {
+  const normalized = code.trim().toUpperCase();
+  const codes = loadCodes();
+  const idx = codes.findIndex((c) => c.code === normalized);
+  if (idx === -1) return;
+  codes[idx] = { ...codes[idx], useCount: (codes[idx].useCount ?? 0) + 1 };
+  saveCodes(codes);
+}
+
+/** Build the shareable signup URL for a given invite code. */
+export function buildInviteLink(code: string): string {
+  return `${window.location.origin}/signup?invite=${encodeURIComponent(code)}`;
 }
 
 /** Delete an invite code. */

@@ -174,7 +174,7 @@ function CreateCoachModal({
             <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
               {label}
             </label>
-            <div className="bg-muted/30 p-4 border border-border">
+            <div className="field-wrap">
               <TechnicalInput value={value} onChange={set} placeholder={placeholder} type={type} data-testid={testId} />
             </div>
           </div>
@@ -191,7 +191,7 @@ function CreateCoachModal({
         <button
           onClick={handleAdd}
           disabled={submitting}
-          className="w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-all disabled:opacity-50"
+          className="btn-press w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest rounded-input hover:opacity-90 disabled:opacity-50"
         >
           {submitting ? 'Creating...' : 'Create Coach'}
         </button>

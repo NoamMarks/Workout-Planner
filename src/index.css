@@ -2,22 +2,60 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * IronTrack Design System (v0.3 — premium dark)
+ *
+ *   Palette:  zinc-950 → zinc-900 → zinc-800   (background → card → border)
+ *   Accent:   emerald-400 (#34d399)            (primary actions, success, focus rings)
+ *   Radii:    --radius-card  : 0.75rem (rounded-xl)
+ *             --radius-input : 0.5rem  (rounded-lg)
+ * ────────────────────────────────────────────────────────────────────────── */
+
 :root {
-  --color-background: #0a0a0a;
-  --color-foreground: #ffffff;
-  --color-card: #141414;
-  --color-border: #262626;
-  --color-muted: #1a1a1a;
-  --color-muted-foreground: #737373;
+  --color-background: #09090b;        /* zinc-950 */
+  --color-foreground: #fafafa;        /* zinc-50  */
+  --color-card: #18181b;              /* zinc-900 */
+  --color-border: #27272a;            /* zinc-800 */
+  --color-muted: #18181b;             /* zinc-900 */
+  --color-muted-foreground: #a1a1aa;  /* zinc-400 — bumped from #737373 for AA contrast */
+  --color-accent: #34d399;            /* emerald-400 */
+  --color-accent-foreground: #052e1a; /* emerald-950-ish */
+  /* Pre-blended field background (cannot use Tailwind opacity modifiers inside
+     @apply when colors are defined as CSS variables). */
+  --color-field: rgb(39 39 42 / 0.30);
+
+  --radius-card: 0.75rem;
+  --radius-input: 0.5rem;
 }
 
 .light {
   --color-background: #fafafa;
-  --color-foreground: #0a0a0a;
+  --color-foreground: #09090b;
   --color-card: #ffffff;
-  --color-border: #e5e5e5;
-  --color-muted: #f5f5f5;
-  --color-muted-foreground: #737373;
+  --color-border: #e4e4e7;
+  --color-muted: #f4f4f5;
+  --color-muted-foreground: #52525b;
+  --color-accent: #059669;            /* emerald-600 — readable on light bg */
+  --color-accent-foreground: #ffffff;
+  --color-field: rgb(244 244 245 / 0.6);
+}
+
+@layer components {
+  /* Input field wrapper — adds rounded-input + accent focus ring when the
+     contained <input> is focused. Used everywhere a TechnicalInput sits inside
+     a styled box (login, signup, modals). */
+  .field-wrap {
+    @apply p-4 border border-border rounded-input transition-colors;
+    background-color: var(--color-field);
+  }
+  .field-wrap:focus-within {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 2px var(--color-background), 0 0 0 4px var(--color-accent);
+  }
+  /* Press-down feedback for primary CTAs. Apply via class="btn-press". */
+  .btn-press {
+    @apply transition-transform active:scale-[0.97];
+  }
 }
 
 @layer base {
@@ -36,5 +74,11 @@
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+  /* Accessible focus ring for any keyboard-focusable input — used together with
+     the border on the parent wrapper so we don't double up on dark themes. */
+  input:focus-visible, textarea:focus-visible, select:focus-visible {
+    box-shadow: 0 0 0 2px var(--color-background), 0 0 0 4px var(--color-accent);
+    border-radius: var(--radius-input);
   }
 }

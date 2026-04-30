@@ -47,6 +47,7 @@ export function RestTimer() {
   const [isListening, setIsListening] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [transcript, setTranscript] = useState('');
+  const [voiceError, setVoiceError] = useState('');
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -77,6 +78,7 @@ export function RestTimer() {
     setIsRunning(true);
     setIsExpanded(true);
     setTranscript('');
+    setVoiceError('');
   }, []);
 
   // ── Voice recognition ──────────────────────────────────────────────────
@@ -100,7 +102,12 @@ export function RestTimer() {
       const text = event.results[0]?.[0]?.transcript ?? '';
       setTranscript(text);
       const parsed = parseTimerCommand(text);
-      if (parsed) startTimer(parsed.seconds);
+      if (parsed) {
+        setVoiceError('');
+        startTimer(parsed.seconds);
+      } else if (text.trim()) {
+        setVoiceError('Try "rest 90 seconds" or "timer 3 minutes"');
+      }
       setIsListening(false);
     };
 
@@ -242,6 +249,14 @@ export function RestTimer() {
             {transcript && (
               <p className="text-[10px] font-mono text-muted-foreground text-center truncate">
                 "{transcript}"
+              </p>
+            )}
+            {voiceError && (
+              <p
+                className="text-[10px] font-mono text-amber-500 text-center"
+                data-testid="voice-error"
+              >
+                {voiceError}
               </p>
             )}
           </motion.div>

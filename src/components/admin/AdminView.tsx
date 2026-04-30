@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Trash2, KeyRound, Archive, Link2, Copy, Check } from 'lucide-react';
-import { motion } from 'motion/react';
+import { ArrowLeft, Trash2, KeyRound, Archive, Link2, Link as LinkIcon, Copy, Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { ProgramEditor } from './ProgramEditor';
 import { cn } from '../../lib/utils';
 import { createDefaultProgram } from '../../constants/mockData';
 import { checkPasswordStrength } from '../../lib/crypto';
-import { createInviteCode, getInviteCodesForCoach, deleteInviteCode } from '../../lib/inviteCodes';
+import {
+  createInviteCode,
+  getInviteCodesForCoach,
+  deleteInviteCode,
+  buildInviteLink,
+} from '../../lib/inviteCodes';
 import type { Client, Program, InviteCode } from '../../types';
 
 const activeProgramOf = (c: Client | null): Program | null =>
@@ -38,7 +43,7 @@ export function AdminView({
 
   // Invite code state
   const [inviteCodes, setInviteCodes] = useState<InviteCode[]>([]);
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [copied, setCopied] = useState<{ id: string; kind: 'code' | 'link' } | null>(null);
 
   // Load invite codes
   useEffect(() => {
@@ -121,7 +126,11 @@ export function AdminView({
   };
 
   const handleGenerateInvite = () => {
-    const invite = createInviteCode(authenticatedUser.id, authenticatedUser.tenantId ?? authenticatedUser.id);
+    const invite = createInviteCode(
+      authenticatedUser.id,
+      authenticatedUser.tenantId ?? authenticatedUser.id,
+      authenticatedUser.name,
+    );
     setInviteCodes((prev) => [...prev, invite]);
   };
 
@@ -130,10 +139,10 @@ export function AdminView({
     setInviteCodes((prev) => prev.filter((c) => c.id !== codeId));
   };
 
-  const handleCopy = async (code: string) => {
-    await navigator.clipboard.writeText(code);
-    setCopiedCode(code);
-    setTimeout(() => setCopiedCode(null), 2000);
+  const handleCopy = async (id: string, value: string, kind: 'code' | 'link') => {
+    await navigator.clipboard.writeText(value);
+    setCopied({ id, kind });
+    setTimeout(() => setCopied(null), 2000);
   };
 
   return (
@@ -168,7 +177,7 @@ export function AdminView({
           <button
             onClick={handleGenerateInvite}
             data-testid="generate-invite-btn"
-            className="flex items-center gap-2 px-4 py-2 text-[10px] font-mono uppercase tracking-widest border border-border hover:border-muted-foreground transition-all"
+            className="btn-press flex items-center gap-2 px-4 py-2 text-[10px] font-mono uppercase tracking-widest border border-border hover:border-accent hover:text-accent rounded-input transition-colors"
           >
             <Link2 className="w-3 h-3" />
             Generate Code
@@ -176,30 +185,76 @@ export function AdminView({
         </div>
         {inviteCodes.length > 0 && (
           <div className="flex flex-wrap gap-3">
-            {inviteCodes.map((inv) => (
-              <div
-                key={inv.id}
-                className="flex items-center gap-2 px-4 py-2.5 bg-muted/30 border border-border text-sm font-mono"
-              >
-                <span className="tracking-widest font-bold" data-testid={`invite-code-${inv.id}`}>
-                  {inv.code}
-                </span>
-                <button
-                  onClick={() => void handleCopy(inv.code)}
-                  className="p-1 text-muted-foreground hover:text-foreground"
-                  title="Copy code"
-                >
-                  {copiedCode === inv.code ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                </button>
-                <button
-                  onClick={() => handleDeleteInvite(inv.id)}
-                  className="p-1 text-muted-foreground hover:text-red-500"
-                  title="Delete code"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </div>
-            ))}
+            <AnimatePresence initial={false}>
+              {inviteCodes.map((inv) => {
+                const usageLabel =
+                  inv.maxUses !== undefined
+                    ? `${inv.useCount ?? 0}/${inv.maxUses}`
+                    : `${inv.useCount ?? 0} uses`;
+                const link = buildInviteLink(inv.code);
+                return (
+                  <motion.div
+                    key={inv.id}
+                    layout
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ duration: 0.18 }}
+                    className="flex items-center gap-3 px-4 py-2.5 bg-muted/30 border border-border rounded-lg text-sm font-mono"
+                  >
+                    <div className="flex flex-col">
+                      <span
+                        className="tracking-widest font-bold text-foreground"
+                        data-testid={`invite-code-${inv.id}`}
+                      >
+                        {inv.code}
+                      </span>
+                      <span className="text-[9px] text-muted-foreground uppercase tracking-widest">
+                        {usageLabel}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => void handleCopy(inv.id, inv.code, 'code')}
+                        className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                        title="Copy code"
+                      >
+                        {copied?.id === inv.id && copied.kind === 'code' ? (
+                          <Check className="w-3 h-3 text-green-500" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => void handleCopy(inv.id, link, 'link')}
+                        data-testid={`copy-link-${inv.id}`}
+                        className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono uppercase tracking-widest border border-border hover:border-muted-foreground hover:text-foreground transition-all rounded-md text-muted-foreground"
+                        title="Copy invite link"
+                      >
+                        {copied?.id === inv.id && copied.kind === 'link' ? (
+                          <>
+                            <Check className="w-3 h-3 text-green-500" />
+                            Copied
+                          </>
+                        ) : (
+                          <>
+                            <LinkIcon className="w-3 h-3" />
+                            Copy Link
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteInvite(inv.id)}
+                        className="p-1.5 text-muted-foreground hover:text-red-500 transition-colors"
+                        title="Delete code"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
           </div>
         )}
       </div>

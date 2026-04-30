@@ -41,7 +41,7 @@ export function ColumnModal({ isOpen, onClose, editingColumn, onSave }: ColumnMo
           <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
             Column Label
           </label>
-          <div className="bg-muted/30 p-4 border border-border">
+          <div className="field-wrap">
             <TechnicalInput
               value={label}
               onChange={setLabel}
@@ -85,7 +85,7 @@ export function ColumnModal({ isOpen, onClose, editingColumn, onSave }: ColumnMo
           onClick={handleSave}
           disabled={!label.trim()}
           data-testid="save-column-btn"
-          className="w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-all shadow-lg disabled:opacity-40"
+          className="btn-press w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest rounded-input hover:opacity-90 shadow-lg disabled:opacity-40"
         >
           {editingColumn ? 'Save Changes' : 'Create Column'}
         </button>

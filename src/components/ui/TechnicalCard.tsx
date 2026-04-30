@@ -12,7 +12,7 @@ export function TechnicalCard({ children, className, onClick }: TechnicalCardPro
     <div
       onClick={onClick}
       className={cn(
-        'bg-card border border-border rounded-sm overflow-hidden shadow-sm',
+        'bg-card border border-border rounded-card overflow-hidden shadow-sm',
         className
       )}
     >

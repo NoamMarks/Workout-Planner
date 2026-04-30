@@ -13,6 +13,14 @@ export default {
           DEFAULT: 'var(--color-muted)',
           foreground: 'var(--color-muted-foreground)',
         },
+        accent: {
+          DEFAULT: 'var(--color-accent)',
+          foreground: 'var(--color-accent-foreground)',
+        },
+      },
+      borderRadius: {
+        card: 'var(--radius-card)',
+        input: 'var(--radius-input)',
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],

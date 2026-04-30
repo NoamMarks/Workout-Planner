@@ -162,8 +162,8 @@ export function PlateCalculator({ isOpen, onClose, initialWeight = '', onApply }
             data-testid="plate-apply-btn"
             disabled={parseNumeric(targetInput) === undefined}
             className={cn(
-              'w-full py-3 text-xs font-bold uppercase tracking-widest transition-all',
-              'bg-foreground text-background hover:opacity-90',
+              'btn-press w-full py-3 text-xs font-bold uppercase tracking-widest rounded-input',
+              'bg-accent text-accent-foreground hover:opacity-90',
               'disabled:opacity-40 disabled:cursor-not-allowed'
             )}
           >
