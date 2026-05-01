@@ -187,10 +187,13 @@ export function AdminView({
           <div className="flex flex-wrap gap-3">
             <AnimatePresence initial={false}>
               {inviteCodes.map((inv) => {
-                const usageLabel =
-                  inv.maxUses !== undefined
-                    ? `${inv.useCount ?? 0}/${inv.maxUses}`
-                    : `${inv.useCount ?? 0} uses`;
+                // Treat both undefined and null (and zero) as unlimited so a
+                // stale localStorage payload doesn't render as "0/null" or as
+                // an instantly-expired fraction.
+                const isUnlimited = inv.maxUses == null || inv.maxUses <= 0;
+                const usageLabel = isUnlimited
+                  ? `${inv.useCount ?? 0} uses · ∞`
+                  : `${inv.useCount ?? 0}/${inv.maxUses}`;
                 const link = buildInviteLink(inv.code);
                 return (
                   <motion.div

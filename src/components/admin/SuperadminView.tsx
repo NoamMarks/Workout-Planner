@@ -158,9 +158,17 @@ function CreateCoachModal({
     if (errs.length > 0) { setErrors(errs); return; }
 
     setSubmitting(true);
-    await onAdd(name.trim(), email.trim(), password);
-    reset();
-    onClose();
+    try {
+      await onAdd(name.trim(), email.trim(), password);
+      reset();
+      onClose();
+    } catch (err) {
+      console.error('CreateCoachModal: failed to create coach', err);
+      const message = err instanceof Error ? err.message : 'Could not create coach. Please try again.';
+      setErrors([message]);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

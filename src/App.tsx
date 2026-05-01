@@ -234,7 +234,7 @@ function LandingPage({
 
 // ─── Add Client Modal ────────────────────────────────────────────────────────
 
-function AddClientModal({
+export function AddClientModal({
   isOpen,
   onClose,
   onAdd,
@@ -271,10 +271,28 @@ function AddClientModal({
 
     if (errs.length > 0) { setErrors(errs); return; }
 
+    // Defensive: a coach without an explicit tenantId should never happen, but a
+    // stale persisted session pre-Sprint-1 might lack one. Refuse to submit
+    // rather than letting addClient throw deep in the call.
+    if (!tenantId) {
+      setErrors(['Cannot create a client: your account is missing a tenant. Sign out and back in.']);
+      return;
+    }
+
     setSubmitting(true);
-    await onAdd(name.trim(), email.trim(), password, 'trainee', tenantId);
-    reset();
-    onClose();
+    try {
+      await onAdd(name.trim(), email.trim(), password, 'trainee', tenantId);
+      reset();
+      onClose();
+    } catch (err) {
+      // Surface the failure inline instead of leaving the modal frozen on
+      // "Creating...". Console keeps the stack for debugging.
+      console.error('AddClientModal: failed to create client', err);
+      const message = err instanceof Error ? err.message : 'Could not create client. Please try again.';
+      setErrors([message]);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const strength = checkPasswordStrength(password);
@@ -747,7 +765,7 @@ export default function App() {
         isOpen={isAddClientOpen}
         onClose={() => setIsAddClientOpen(false)}
         onAdd={addClient}
-        tenantId={authenticatedUser.tenantId}
+        tenantId={authenticatedUser.tenantId ?? authenticatedUser.id}
       />
     </AppShell>
   );

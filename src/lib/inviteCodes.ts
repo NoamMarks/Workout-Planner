@@ -80,6 +80,17 @@ export function getInviteCodesForCoach(coachId: string): InviteCode[] {
 }
 
 /**
+ * Predicate: a code with maxUses == null (or undefined, or any non-positive
+ * value) is unlimited — never expires from useCount alone. We compare loosely
+ * against null so legacy localStorage payloads that explicitly stored
+ * `"maxUses": null` are treated identically to fresh codes with the field
+ * absent.
+ */
+function isUnlimited(invite: InviteCode): boolean {
+  return invite.maxUses == null || invite.maxUses <= 0;
+}
+
+/**
  * Look up an invite code by code string.
  * Returns null if the code is unknown OR if it has reached its maxUses cap.
  */
@@ -88,7 +99,7 @@ export function lookupInviteCode(code: string): InviteCode | null {
   if (!normalized) return null;
   const found = loadCodes().find((c) => c.code === normalized);
   if (!found) return null;
-  if (found.maxUses !== undefined && (found.useCount ?? 0) >= found.maxUses) {
+  if (!isUnlimited(found) && (found.useCount ?? 0) >= found.maxUses!) {
     return null;
   }
   return found;
