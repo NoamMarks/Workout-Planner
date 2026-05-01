@@ -89,15 +89,32 @@ export function ForgotPasswordPage({
     if (newPassword !== confirmPassword) errs.push('Passwords do not match.');
     if (errs.length > 0) { setPasswordErrors(errs); return; }
 
+    if (!resolvedUser) {
+      // Belt-and-braces: should be impossible to reach this step without a
+      // resolvedUser, but if state got into a weird shape, fail visibly.
+      const err = new Error('Internal: resetPassword called without a resolved user');
+      console.error('[IronTrack reset]', err);
+      setPasswordErrors([err.message]);
+      return;
+    }
+
     setSubmitting(true);
     setPasswordErrors([]);
 
-    // Consume the token so it can't be reused
-    consumeResetToken(email.trim().toLowerCase(), code.trim());
-
-    // Actually reset the password
-    await onResetPassword(resolvedUser!.id, newPassword);
-    setStep('done');
+    try {
+      // Reset the password FIRST. Only consume the token after a confirmed
+      // successful save — the previous order burnt the token even on failure,
+      // leaving the user unable to retry.
+      await onResetPassword(resolvedUser.id, newPassword);
+      consumeResetToken(email.trim().toLowerCase(), code.trim());
+      setStep('done');
+    } catch (err) {
+      console.error('[IronTrack reset] password update failed', err);
+      const message = err instanceof Error ? err.message : 'Could not reset password. Please try again.';
+      setPasswordErrors([message]);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

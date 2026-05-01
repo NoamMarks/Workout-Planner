@@ -59,12 +59,26 @@ export function createInviteCode(
   coachName?: string,
   maxUses?: number,
 ): InviteCode {
+  // Defensive: a code without coachId or tenantId is unusable downstream
+  // (trainee creation will throw "requires a tenantId"). Fail loudly here so
+  // the bug is caught at generation time, not at signup.
+  if (!coachId || !coachId.trim()) {
+    const err = new Error(`createInviteCode: coachId must be a non-empty string (got "${coachId}")`);
+    console.error('[IronTrack invite]', err);
+    throw err;
+  }
+  if (!tenantId || !tenantId.trim()) {
+    const err = new Error(`createInviteCode: tenantId must be a non-empty string (got "${tenantId}")`);
+    console.error('[IronTrack invite]', err);
+    throw err;
+  }
+
   const codes = loadCodes();
   const invite: InviteCode = {
     id: Math.random().toString(36).substring(2, 9),
     code: makeCode(),
-    tenantId,
-    coachId,
+    tenantId: tenantId.trim(),
+    coachId: coachId.trim(),
     coachName,
     createdAt: new Date().toISOString(),
     maxUses,
@@ -99,6 +113,13 @@ export function lookupInviteCode(code: string): InviteCode | null {
   if (!normalized) return null;
   const found = loadCodes().find((c) => c.code === normalized);
   if (!found) return null;
+  // Defensive: an invite without a tenantId can't be used to create a trainee
+  // (addClient will throw). Treat it as corrupt rather than letting the silent
+  // failure cascade into the signup flow.
+  if (!found.tenantId || !found.tenantId.trim()) {
+    console.error('[IronTrack invite] code lookup found a record with no tenantId — refusing', found);
+    return null;
+  }
   if (!isUnlimited(found) && (found.useCount ?? 0) >= found.maxUses!) {
     return null;
   }

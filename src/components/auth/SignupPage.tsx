@@ -77,6 +77,11 @@ export function SignupPage({ onComplete, onBack, theme, onToggleTheme }: SignupP
     const invite = lookupInviteCode(inviteCode);
     if (!invite) {
       errs.push('Invalid invite code. Please check with your coach.');
+    } else if (!invite.tenantId || !invite.tenantId.trim()) {
+      // Defensive: a corrupt invite without a tenantId would let the form
+      // proceed to OTP, then silently fail at addClient time. Reject up front.
+      console.error('[IronTrack signup] lookupInviteCode returned an invite with no tenantId', invite);
+      errs.push('Invite code is corrupt — ask your coach to generate a new one.');
     }
 
     if (errs.length > 0) { setErrors(errs); return; }
@@ -102,6 +107,14 @@ export function SignupPage({ onComplete, onBack, theme, onToggleTheme }: SignupP
       // Only consume the invite once the account creation succeeded — if onComplete
       // throws we leave the use count alone.
       consumeInviteCode(inviteCode.trim());
+    } catch (err) {
+      // Surface the failure inline. The previous code had try/finally with no
+      // catch, which let exceptions propagate as unhandled rejections — the
+      // user saw the button revert from "Creating Account..." with no message
+      // and no account.
+      console.error('[IronTrack signup] verify step failed', err);
+      const message = err instanceof Error ? err.message : 'Could not create your account. Please try again.';
+      setOtpError(message);
     } finally {
       setSubmitting(false);
     }

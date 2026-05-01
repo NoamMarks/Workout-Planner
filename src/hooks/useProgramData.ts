@@ -125,25 +125,32 @@ export function useProgramData() {
 
   const addClient = useCallback(
     async (name: string, email: string, password: string, role: UserRole = 'trainee', tenantId?: string) => {
-      const hashed = await hashPassword(password);
+      // Trim email + password BEFORE hashing so a fresh signup hash matches the
+      // login hash — login itself trims password before hashing, so any
+      // accidental trailing whitespace here would cause a silent auth mismatch.
+      const trimmedEmail = email.trim();
+      const trimmedPassword = password.trim();
+      const hashed = await hashPassword(trimmedPassword);
       const id = Math.random().toString(36).substring(7);
 
       // Tenant enforcement: every non-superadmin must have a tenantId.
       // - admin (coach): own id is the tenant root, even if caller forgot to pass one
       // - trainee: must inherit a coach's tenantId; refuse to create an orphan
-      let resolvedTenantId = tenantId;
+      let resolvedTenantId = tenantId?.trim() || undefined;
       if (role === 'admin') {
-        resolvedTenantId = tenantId ?? id;
+        resolvedTenantId = resolvedTenantId ?? id;
       } else if (role === 'trainee' && !resolvedTenantId) {
-        throw new Error('addClient: trainee creation requires a tenantId');
+        const err = new Error('addClient: trainee creation requires a non-empty tenantId');
+        console.error('[IronTrack addClient]', err, { name, email: trimmedEmail, role, tenantId });
+        throw err;
       } else if (role === 'superadmin') {
         resolvedTenantId = 'global';
       }
 
       const newClient: Client = {
         id,
-        name,
-        email,
+        name: name.trim(),
+        email: trimmedEmail,
         password: hashed,
         role,
         tenantId: resolvedTenantId,
@@ -157,7 +164,19 @@ export function useProgramData() {
 
   const resetPassword = useCallback(
     async (clientId: string, newPassword: string) => {
-      const hashed = await hashPassword(newPassword);
+      // Defensive: a clients.map without a matching id silently no-ops, leaving
+      // the user unable to log in with their "new" password and no error
+      // surfaced. Verify the user exists first.
+      const target = clients.find((c) => c.id === clientId);
+      if (!target) {
+        const err = new Error(`resetPassword: no client found with id "${clientId}"`);
+        console.error('[IronTrack resetPassword]', err);
+        throw err;
+      }
+      // Trim before hashing so the stored hash matches what login produces from
+      // the typed password (login trims; addClient now trims; resetPassword
+      // must too — otherwise password "Pass1 " wouldn't authenticate as "Pass1").
+      const hashed = await hashPassword(newPassword.trim());
       updateClients(clients.map((c) => (c.id === clientId ? { ...c, password: hashed } : c)));
     },
     [clients, updateClients]

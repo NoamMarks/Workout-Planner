@@ -27,6 +27,11 @@ interface UseAuthReturn extends AuthState {
   impersonate: (coach: Client) => void;
   /** Stop impersonating and return to superadmin view */
   stopImpersonating: () => void;
+  /** Direct login for a freshly-created user — bypasses password verification
+   *  (the user was just created with that password, no need to re-hash). Used
+   *  by the signup flow to guarantee auto-login can never silently fail on a
+   *  hash mismatch. */
+  loginAsUser: (user: Client) => void;
 }
 
 function viewForRole(role: Client['role']): AppView {
@@ -150,5 +155,14 @@ export function useAuth(): UseAuthReturn {
     }));
   }, []);
 
-  return { ...state, login, logout, setView, impersonate, stopImpersonating };
+  const loginAsUser = useCallback((user: Client) => {
+    setState({
+      authenticatedUser: user,
+      view: viewForRole(user.role),
+      loginError: '',
+      impersonating: null,
+    });
+  }, []);
+
+  return { ...state, login, logout, setView, impersonate, stopImpersonating, loginAsUser };
 }

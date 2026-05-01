@@ -441,7 +441,7 @@ function AppShell({
 
 export default function App() {
   const { clients, isBootstrapping, updateClients, addClient, saveSession, resetPassword, archiveProgram, getClientsForTenant } = useProgramData();
-  const { authenticatedUser, view, loginError, login, logout, setView, impersonating, impersonate, stopImpersonating } = useAuth();
+  const { authenticatedUser, view, loginError, login, logout, setView, impersonating, impersonate, stopImpersonating, loginAsUser } = useAuth();
 
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [activeWorkout, setActiveWorkout] = useState<{ week: WorkoutWeek; day: WorkoutDay } | null>(null);
@@ -539,9 +539,23 @@ export default function App() {
   };
 
   const handleSignupComplete = async (name: string, email: string, password: string, tenantId: string) => {
-    const newUser = await addClient(name, email, password, 'trainee', tenantId);
-    // Auto-login the new user
-    await login(clients.concat(newUser), email, password);
+    // Defensive: missing tenantId would cause addClient to throw and the
+    // signup to fail silently from the user's perspective. Catch that here
+    // before we even hit the hook so the error message is precise.
+    if (!tenantId || !tenantId.trim()) {
+      const err = new Error(`handleSignupComplete: tenantId is required (got "${tenantId}"). The invite code may be corrupt.`);
+      console.error('[IronTrack signup]', err);
+      throw err;
+    }
+    try {
+      const newUser = await addClient(name, email, password, 'trainee', tenantId);
+      // Direct-login the freshly-created user so a password-hash race or trim
+      // mismatch can never silently strand the user on the signup page.
+      loginAsUser(newUser);
+    } catch (err) {
+      console.error('[IronTrack signup] account creation or auto-login failed', err);
+      throw err;
+    }
   };
 
   const handleSaveSession = (updatedDay: WorkoutDay) => {

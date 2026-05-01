@@ -125,13 +125,21 @@ export function AdminView({
     onUpdateClients(updatedClients);
   };
 
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
   const handleGenerateInvite = () => {
-    const invite = createInviteCode(
-      authenticatedUser.id,
-      authenticatedUser.tenantId ?? authenticatedUser.id,
-      authenticatedUser.name,
-    );
-    setInviteCodes((prev) => [...prev, invite]);
+    try {
+      const invite = createInviteCode(
+        authenticatedUser.id,
+        authenticatedUser.tenantId ?? authenticatedUser.id,
+        authenticatedUser.name,
+      );
+      setInviteCodes((prev) => [...prev, invite]);
+      setInviteError(null);
+    } catch (err) {
+      console.error('[IronTrack invite] generation failed', err);
+      setInviteError(err instanceof Error ? err.message : 'Could not generate invite code.');
+    }
   };
 
   const handleDeleteInvite = (codeId: string) => {
@@ -183,6 +191,11 @@ export function AdminView({
             Generate Code
           </button>
         </div>
+        {inviteError && (
+          <p className="text-[10px] font-mono text-red-500" data-testid="invite-generation-error">
+            {inviteError}
+          </p>
+        )}
         {inviteCodes.length > 0 && (
           <div className="flex flex-wrap gap-3">
             <AnimatePresence initial={false}>
