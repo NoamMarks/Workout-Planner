@@ -35,15 +35,21 @@ function viewForRole(role: Client['role']): AppView {
   }
 }
 
-/** Magic-link URL detection: signup deep links override whatever view we'd
- *  otherwise default to so an invite click always lands on the form. */
+/** Magic-link URL detection: an invite query param OR a /signup deep-link
+ *  pathname both mean "the user clicked an invite — land on the signup
+ *  form regardless of any pre-existing session". Centralised so the initial
+ *  state seed AND the bootstrap success path can both consult it without
+ *  coupling to each other. SSR-safe via the typeof window guard. */
+function urlHasInvite(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.location.search.includes('invite=') ||
+    window.location.pathname.startsWith('/signup')
+  );
+}
+
 function initialViewFromUrl(fallback: AppView): AppView {
-  if (typeof window === 'undefined') return fallback;
-  const params = new URLSearchParams(window.location.search);
-  if (window.location.pathname.startsWith('/signup') || params.has('invite')) {
-    return 'signup';
-  }
-  return fallback;
+  return urlHasInvite() ? 'signup' : fallback;
 }
 
 /** Map raw Supabase auth error messages onto the friendlier strings the UI
@@ -118,12 +124,17 @@ export function useAuth(): UseAuthReturn {
           const profile = await loadProfile(session.user.id, session.user.email ?? '');
           if (cancelled) return;
           if (profile) {
+            // Invite links must ALWAYS route to /signup, even when a stale
+            // session is hydrated from localStorage — the click is an explicit
+            // signal that the user intends to create a NEW account, and we
+            // must not silently log them in as someone else's residual
+            // session. Re-read the URL here rather than trusting prev.view,
+            // which can be perturbed by other initialisation paths.
+            const inviteOverride = urlHasInvite();
             setState((prev) => ({
               ...prev,
               authenticatedUser: profile,
-              // If the URL forced 'signup', honour it (user clicked an invite while
-              // already authenticated). Otherwise use the role-default.
-              view: prev.view === 'signup' ? prev.view : viewForRole(profile.role),
+              view: inviteOverride ? 'signup' : viewForRole(profile.role),
             }));
           }
         }
