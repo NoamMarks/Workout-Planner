@@ -456,6 +456,7 @@ export default function App() {
     archiveProgram,
     deleteClient,
     createProgram,
+    appendClient,
     getClientsForTenant,
   } = useProgramData(authenticatedUser);
 
@@ -600,14 +601,43 @@ export default function App() {
   };
 
   const handleAddCoach = async (name: string, email: string, password: string): Promise<Client> => {
-    // Phase 3: creating a coach client-side requires Supabase service-role
-    // privileges (admin.createUser). The signUp flow would log the superadmin
-    // out, so we surface an explicit error here instead. A serverless
-    // function (api/admin-create-user.ts) is the planned follow-up.
-    console.warn('[IronTrack] handleAddCoach not implemented in Phase 3', { name, email, hasPassword: !!password });
-    throw new Error(
-      'Creating coaches from the UI is not yet wired up to Supabase. Send the new coach a signup link instead.',
-    );
+    // Coach creation runs through /api/admin-create-user because
+    // supabase.auth.admin.createUser requires the service-role key, which
+    // must NEVER reach the browser bundle. The endpoint creates the auth
+    // user, lets the on_auth_user_created trigger insert the profiles row,
+    // then repoints tenant_id at the new user (a coach is the root of their
+    // own tenant) and returns the resulting profile.
+    const response = await fetch('/api/admin-create-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password }),
+    });
+
+    let payload: { profile?: { id: string; name: string; email: string; role: Client['role']; tenant_id: string | null; active_program_id: string | null }; error?: string } = {};
+    try {
+      payload = await response.json();
+    } catch {
+      // Non-JSON body — fall through with empty payload so the !ok branch
+      // surfaces a generic error instead of a JSON parse trace.
+    }
+
+    if (!response.ok || !payload.profile) {
+      throw new Error(payload.error || `Failed to create coach (HTTP ${response.status}).`);
+    }
+
+    const profile = payload.profile;
+    const newCoach: Client = {
+      id: profile.id,
+      name: profile.name,
+      email: profile.email,
+      role: profile.role,
+      tenantId: profile.tenant_id ?? undefined,
+      activeProgramId: profile.active_program_id ?? undefined,
+      programs: [],
+    };
+    appendClient(newCoach);
+    setToast('Coach created successfully');
+    return newCoach;
   };
 
   // Keep selectedClient in sync with the clients store (e.g. after coach edits)

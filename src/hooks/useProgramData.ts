@@ -436,6 +436,20 @@ export function useProgramData(authenticatedUser: Client | null) {
     return clients.filter((c) => c.tenantId === user.tenantId && c.id !== user.id);
   }, [clients]);
 
+  /**
+   * Append a freshly-created profile to the in-memory clients[] tree without a
+   * full refetch. Used by the superadmin UI after POST /api/admin-create-user
+   * so the new coach card shows up instantly. Idempotent — replaces an existing
+   * row with the same id rather than duplicating it.
+   */
+  const appendClient = useCallback((client: Client) => {
+    setClients((prev) => {
+      const exists = prev.some((c) => c.id === client.id);
+      if (exists) return prev.map((c) => (c.id === client.id ? client : c));
+      return [...prev, client];
+    });
+  }, []);
+
   return {
     clients,
     isLoadingData,
@@ -446,6 +460,7 @@ export function useProgramData(authenticatedUser: Client | null) {
     deleteClient,
     createProgram,
     addClient,
+    appendClient,
     getClientsForTenant,
   };
 
