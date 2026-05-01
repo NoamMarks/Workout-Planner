@@ -105,25 +105,35 @@ export function useAuth(): UseAuthReturn {
     let cancelled = false;
 
     async function bootstrap() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (cancelled) return;
-
-      if (session?.user) {
-        const profile = await loadProfile(session.user.id, session.user.email ?? '');
+      // try/catch/finally so a thrown getSession (network failure, corrupt
+      // localStorage session blob, RLS rejection on the profile fetch, etc.)
+      // can never leave the UI stuck on "INITIALIZING...". The finally branch
+      // is the load-bearing line: it ALWAYS clears isLoading.
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
         if (cancelled) return;
-        if (profile) {
-          setState((prev) => ({
-            ...prev,
-            authenticatedUser: profile,
-            // If the URL forced 'signup', honour it (user clicked an invite while
-            // already authenticated). Otherwise use the role-default.
-            view: prev.view === 'signup' ? prev.view : viewForRole(profile.role),
-            isLoading: false,
-          }));
-          return;
+        if (error) throw error;
+
+        if (session?.user) {
+          const profile = await loadProfile(session.user.id, session.user.email ?? '');
+          if (cancelled) return;
+          if (profile) {
+            setState((prev) => ({
+              ...prev,
+              authenticatedUser: profile,
+              // If the URL forced 'signup', honour it (user clicked an invite while
+              // already authenticated). Otherwise use the role-default.
+              view: prev.view === 'signup' ? prev.view : viewForRole(profile.role),
+            }));
+          }
+        }
+      } catch (err) {
+        console.error('[IronTrack auth] bootstrap failed', err);
+      } finally {
+        if (!cancelled) {
+          setState((prev) => ({ ...prev, isLoading: false }));
         }
       }
-      setState((prev) => ({ ...prev, isLoading: false }));
     }
     bootstrap();
 
