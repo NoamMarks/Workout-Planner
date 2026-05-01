@@ -152,9 +152,15 @@ export function useAuth(): UseAuthReturn {
       async (event, session) => {
         if (cancelled) return;
         if (event === 'SIGNED_OUT' || !session?.user) {
+          // Race-condition guard: supabase-js fires INITIAL_SESSION with a
+          // null session synchronously after subscribe(), which would clobber
+          // the 'signup' view that initialViewFromUrl just seeded. If the URL
+          // still says "this is an invite click", urlHasInvite() remains the
+          // single source of truth and we route to /signup instead of
+          // dropping the user on the landing/login page.
           setState({
             authenticatedUser: null,
-            view: 'landing',
+            view: urlHasInvite() ? 'signup' : 'landing',
             loginError: '',
             impersonating: null,
             isLoading: false,
