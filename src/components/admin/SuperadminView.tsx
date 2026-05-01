@@ -3,6 +3,7 @@ import { Shield, Users, Eye, UserPlus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TechnicalCard, TechnicalInput, Modal } from '../ui';
 import { checkPasswordStrength } from '../../lib/crypto';
+import { isValidEmail, INVALID_EMAIL_MESSAGE } from '../../lib/validation';
 import type { Client } from '../../types';
 
 interface SuperadminViewProps {
@@ -150,6 +151,7 @@ function CreateCoachModal({
     const errs: string[] = [];
     if (!name.trim()) errs.push('Name is required.');
     if (!email.trim()) errs.push('Email is required.');
+    else if (!isValidEmail(email)) errs.push(INVALID_EMAIL_MESSAGE);
     const strength = checkPasswordStrength(password);
     if (!strength.ok) errs.push(...strength.errors.map((e) => `Password: ${e}`));
     if (password !== confirm) errs.push('Passwords do not match.');

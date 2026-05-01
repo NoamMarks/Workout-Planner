@@ -4,7 +4,8 @@ import { motion } from 'motion/react';
 import { TechnicalCard, TechnicalInput } from '../ui';
 import { cn } from '../../lib/utils';
 import { checkPasswordStrength } from '../../lib/crypto';
-import { lookupInviteCode, consumeInviteCode } from '../../lib/inviteCodes';
+import { isValidEmail, INVALID_EMAIL_MESSAGE } from '../../lib/validation';
+import { lookupInviteCode, consumeInviteCode, normalizeInviteCode } from '../../lib/inviteCodes';
 import { generateOTP, sendVerificationEmail } from '../../lib/verification';
 import type { InviteCode } from '../../types';
 
@@ -43,15 +44,17 @@ export function SignupPage({ onComplete, onBack, theme, onToggleTheme }: SignupP
   const strength = checkPasswordStrength(password);
 
   // Read ?invite= from the URL on mount; auto-fill the field and surface
-  // the coach's name in a welcome banner.
+  // the coach's name in a welcome banner. Normalize through the same path
+  // the lookup uses so URL artefacts can never desynchronise the two.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const raw = params.get('invite');
     if (!raw) return;
+    const normalized = normalizeInviteCode(raw);
     setLinkInviteRaw(raw);
-    setInviteCode(raw);
-    const looked = lookupInviteCode(raw);
+    setInviteCode(normalized);
+    const looked = lookupInviteCode(normalized);
     if (looked) {
       setPrefilledInvite(looked);
     } else {
@@ -66,6 +69,7 @@ export function SignupPage({ onComplete, onBack, theme, onToggleTheme }: SignupP
     const errs: string[] = [];
     if (!name.trim()) errs.push('Name is required.');
     if (!email.trim()) errs.push('Email is required.');
+    else if (!isValidEmail(email)) errs.push(INVALID_EMAIL_MESSAGE);
     if (!strength.ok) errs.push(...strength.errors.map((e) => `Password: ${e}`));
     if (password !== confirm) errs.push('Passwords do not match.');
 

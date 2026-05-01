@@ -3,6 +3,7 @@ import { Dumbbell, Sun, Moon, ArrowLeft } from 'lucide-react';
 import { motion } from 'motion/react';
 import { TechnicalCard, TechnicalInput } from '../ui';
 import { checkPasswordStrength } from '../../lib/crypto';
+import { isValidEmail, INVALID_EMAIL_MESSAGE } from '../../lib/validation';
 import {
   createResetToken,
   validateResetToken,
@@ -32,6 +33,7 @@ export function ForgotPasswordPage({
 
   // Email step
   const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState('');
 
   // Code step
   const [code, setCode] = useState('');
@@ -47,6 +49,12 @@ export function ForgotPasswordPage({
   const [resolvedUser, setResolvedUser] = useState<Client | null>(null);
 
   const handleEmailSubmit = () => {
+    if (!isValidEmail(email)) {
+      setEmailError(INVALID_EMAIL_MESSAGE);
+      return;
+    }
+    setEmailError('');
+
     const normalizedEmail = email.trim().toLowerCase();
     const user = clients.find((c) => c.email.toLowerCase() === normalizedEmail);
 
@@ -147,6 +155,11 @@ export function ForgotPasswordPage({
                       />
                     </div>
                   </div>
+                  {emailError && (
+                    <p className="text-[10px] font-mono text-red-500" data-testid="forgot-email-error">
+                      {emailError}
+                    </p>
+                  )}
                   <button
                     onClick={handleEmailSubmit}
                     disabled={!email.trim()}

@@ -8,16 +8,30 @@ import type { InviteCode } from '../types';
 
 const STORAGE_KEY = 'irontrack_invite_codes';
 
-/** Migrate legacy invite records (pre-Sprint-5) to include useCount. */
-function normalize(code: InviteCode): InviteCode {
-  return { useCount: 0, ...code };
+/**
+ * Canonicalise a code string so accidental whitespace, lowercase entry, or
+ * copy-paste artefacts never cause a lookup miss. Used at every boundary —
+ * storage, lookup, consume, and the URL-param read in SignupPage.
+ */
+export function normalizeInviteCode(input: string): string {
+  return input.replace(/\s+/g, '').toUpperCase();
+}
+
+/** Migrate legacy invite records (pre-Sprint-5) to include useCount and a
+ *  re-canonicalised code (in case anything pre-normalisation was persisted). */
+function normalizeRecord(code: InviteCode): InviteCode {
+  return {
+    useCount: 0,
+    ...code,
+    code: normalizeInviteCode(code.code),
+  };
 }
 
 function loadCodes(): InviteCode[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    return (JSON.parse(raw) as InviteCode[]).map(normalize);
+    return (JSON.parse(raw) as InviteCode[]).map(normalizeRecord);
   } catch {
     return [];
   }
@@ -29,11 +43,13 @@ function saveCodes(codes: InviteCode[]): void {
 
 /** Generate a short, unique, human-readable invite code. */
 function makeCode(): string {
-  // 8 alphanumeric chars, uppercase for readability
-  return Array.from(crypto.getRandomValues(new Uint8Array(5)))
-    .map((b) => b.toString(36).toUpperCase().padStart(2, '0'))
+  // 8 alphanumeric chars, uppercase for readability. normalizeInviteCode is a
+  // belt-and-braces guarantee so makeCode and lookups always agree.
+  const raw = Array.from(crypto.getRandomValues(new Uint8Array(5)))
+    .map((b) => b.toString(36).padStart(2, '0'))
     .join('')
     .slice(0, 8);
+  return normalizeInviteCode(raw);
 }
 
 /** Create a new invite code for a coach. */
@@ -68,7 +84,8 @@ export function getInviteCodesForCoach(coachId: string): InviteCode[] {
  * Returns null if the code is unknown OR if it has reached its maxUses cap.
  */
 export function lookupInviteCode(code: string): InviteCode | null {
-  const normalized = code.trim().toUpperCase();
+  const normalized = normalizeInviteCode(code);
+  if (!normalized) return null;
   const found = loadCodes().find((c) => c.code === normalized);
   if (!found) return null;
   if (found.maxUses !== undefined && (found.useCount ?? 0) >= found.maxUses) {
@@ -79,7 +96,8 @@ export function lookupInviteCode(code: string): InviteCode | null {
 
 /** Increment the use counter for a code after a successful signup. */
 export function consumeInviteCode(code: string): void {
-  const normalized = code.trim().toUpperCase();
+  const normalized = normalizeInviteCode(code);
+  if (!normalized) return;
   const codes = loadCodes();
   const idx = codes.findIndex((c) => c.code === normalized);
   if (idx === -1) return;

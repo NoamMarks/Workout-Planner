@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Dumbbell, ShieldCheck, Sun, Moon, UserPlus, X, ChevronRight, Users, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -13,6 +13,7 @@ import { RestTimer } from './components/trainee/RestTimer';
 import { SignupPage } from './components/auth/SignupPage';
 import { ForgotPasswordPage } from './components/auth/ForgotPasswordPage';
 import { checkPasswordStrength } from './lib/crypto';
+import { isValidEmail, INVALID_EMAIL_MESSAGE } from './lib/validation';
 import type { Client, WorkoutWeek, WorkoutDay, UserRole } from './types';
 
 // ─── Coach: Client list view ─────────────────────────────────────────────────
@@ -117,6 +118,16 @@ function LandingPage({
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [formatError, setFormatError] = useState('');
+
+  const handleSubmit = () => {
+    if (!isValidEmail(email)) {
+      setFormatError(INVALID_EMAIL_MESSAGE);
+      return;
+    }
+    setFormatError('');
+    onLogin(email, password);
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -180,12 +191,15 @@ function LandingPage({
                   </div>
                 </div>
 
-                {loginError && (
+                {formatError && (
+                  <p className="text-red-500 font-mono text-xs" data-testid="login-format-error">{formatError}</p>
+                )}
+                {loginError && !formatError && (
                   <p className="text-red-500 font-mono text-xs">{loginError}</p>
                 )}
 
                 <button
-                  onClick={() => onLogin(email, password)}
+                  onClick={handleSubmit}
                   disabled={isBootstrapping}
                   data-testid="login-btn"
                   className="btn-press w-full bg-foreground text-background py-4 text-xs font-bold uppercase tracking-widest rounded-input hover:opacity-90 shadow-lg disabled:opacity-40 disabled:cursor-wait"
@@ -249,6 +263,7 @@ function AddClientModal({
     const errs: string[] = [];
     if (!name.trim())  errs.push('Name is required.');
     if (!email.trim()) errs.push('Email is required.');
+    else if (!isValidEmail(email)) errs.push(INVALID_EMAIL_MESSAGE);
 
     const strength = checkPasswordStrength(password);
     if (!strength.ok) errs.push(...strength.errors.map((e) => `Password: ${e}`));
@@ -428,17 +443,76 @@ export default function App() {
     if (saved) setTheme(saved);
   }, []);
 
-  // Magic-link routing: when the page loads at /signup or with ?invite=...
-  // route directly to the signup view. SignupPage reads the param itself.
+  // Magic-link routing now happens synchronously inside useAuth's state
+  // initializer — no effect needed here.
+
+  // ─── Browser back-button sync ────────────────────────────────────────────
+  //
+  // We snapshot the three pieces of navigation-relevant state (view +
+  // selectedClient + activeWorkout keys) into history.state on every change
+  // and restore them on popstate. A ref breaks the popstate → setState → push
+  // feedback loop. The key insight: history.state is keyed by entry, so
+  // back/forward navigation transparently reads the right snapshot.
+
+  type RouteSnapshot = {
+    view: typeof view;
+    selectedClientId: string | null;
+    activeWorkout: { weekId: string; dayId: string } | null;
+  };
+  const skipNextPushRef = useRef(false);
+  const initialMountRef = useRef(true);
+
+  // Capture snapshot whenever navigation state changes.
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const isSignupPath = window.location.pathname.startsWith('/signup');
-    const hasInvite = params.has('invite');
-    if (isSignupPath || hasInvite) setView('signup');
-    // setView is stable (useCallback) but excluding it keeps this strictly mount-only
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const snapshot: RouteSnapshot = {
+      view,
+      selectedClientId: selectedClient?.id ?? null,
+      activeWorkout: activeWorkout
+        ? { weekId: activeWorkout.week.id, dayId: activeWorkout.day.id }
+        : null,
+    };
+    if (initialMountRef.current) {
+      initialMountRef.current = false;
+      window.history.replaceState({ irontrack: snapshot }, '');
+      return;
+    }
+    if (skipNextPushRef.current) {
+      skipNextPushRef.current = false;
+      return;
+    }
+    window.history.pushState({ irontrack: snapshot }, '');
+  }, [view, selectedClient?.id, activeWorkout]);
+
+  // Restore snapshot on browser back/forward.
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      const s = (e.state && (e.state as { irontrack?: RouteSnapshot }).irontrack) || null;
+      if (!s) return;
+      // Tell the push effect to skip the next render — we're being driven by
+      // the browser, not by the user.
+      skipNextPushRef.current = true;
+      setView(s.view);
+      if (s.selectedClientId == null) {
+        setSelectedClient(null);
+      } else {
+        const target = clients.find((c) => c.id === s.selectedClientId);
+        setSelectedClient(target ?? null);
+      }
+      if (s.activeWorkout == null) {
+        setActiveWorkout(null);
+      } else {
+        const target = clients.find((c) => c.id === s.selectedClientId);
+        const program =
+          target?.programs.find((p) => p.id === target.activeProgramId && p.status !== 'archived') ??
+          target?.programs.find((p) => p.status !== 'archived');
+        const week = program?.weeks.find((w) => w.id === s.activeWorkout!.weekId);
+        const day = week?.days.find((d) => d.id === s.activeWorkout!.dayId);
+        setActiveWorkout(week && day ? { week, day } : null);
+      }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [clients, setView]);
 
   const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
 
