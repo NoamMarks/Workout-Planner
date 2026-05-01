@@ -41,6 +41,9 @@ run_layer "Lint (ESLint)" npx eslint . --ext ts,tsx --report-unused-disable-dire
 run_layer "Smoke/Sanity (Playwright)" npx playwright test --grep "Smoke|Sanity"
 run_layer "Coach Creation Flow (Playwright)" npx playwright test --grep "Coach Creation"
 run_layer "Trainee Logging Flow (Playwright)" npx playwright test --grep "Trainee Logging"
+run_layer "Auth Guards (Playwright)" npx playwright test --grep "Auth Guards"
+run_layer "Program Editor (Playwright)" npx playwright test --grep "Program Editor"
+run_layer "Gym Floor (Playwright)" npx playwright test --grep "Gym Floor"
 
 # ─── Executive Summary ───────────────────────────────────────────────────────
 echo ""
