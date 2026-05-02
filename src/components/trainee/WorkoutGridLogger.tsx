@@ -1,13 +1,16 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import {
   ArrowLeft,
-  Save,
+  Trophy,
   Upload,
   Play,
   Calculator,
   Check,
   Flame,
   StickyNote,
+  Cloud,
+  CloudOff,
+  Loader2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TechnicalCard } from '../ui';
@@ -109,8 +112,18 @@ interface WorkoutGridLoggerProps {
   week: WorkoutWeek;
   day: WorkoutDay;
   onBack: () => void;
-  onSave: (updatedDay: WorkoutDay) => void;
+  /** Silent autosave — persists actuals without marking the day complete
+   *  and without exiting the workout view. Called on a debounced
+   *  timer after every input change. */
+  onAutoSave: (updatedDay: WorkoutDay) => Promise<void>;
+  /** Explicit "Finish Workout" — marks the day complete and exits. The
+   *  trainee triggers this only when they're done with the session. */
+  onFinish: (updatedDay: WorkoutDay) => Promise<void> | void;
 }
+
+type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+
+const AUTOSAVE_DEBOUNCE_MS = 800;
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -120,7 +133,8 @@ export function WorkoutGridLogger({
   week,
   day,
   onBack,
-  onSave,
+  onAutoSave,
+  onFinish,
 }: WorkoutGridLoggerProps) {
   const [exercises, setExercises] = useState<ExercisePlan[]>(day.exercises);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -132,6 +146,74 @@ export function WorkoutGridLogger({
 
   const columns = program.columns ?? DEFAULT_COLUMNS;
   const notesIsActual = columns.some((c) => c.id === 'notes' && c.type === 'actual');
+
+  // ── Autosave plumbing ───────────────────────────────────────────────────
+  // Every change to `exercises` schedules a save 800ms later. If the
+  // trainee keeps typing, the timer resets — only the last value of a
+  // typing burst hits the network. On unmount (back button, browser
+  // close, parent route change) we flush any pending save synchronously
+  // so no keystroke is lost.
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Bumped every time `exercises` changes so the autosave callback can
+  // verify it's saving the LATEST snapshot — drops stale saves on the floor.
+  const editVersionRef = useRef(0);
+  // Skip the autosave-on-mount: the initial useState already has the
+  // server's data, no need to re-write it.
+  const hasUserEditedRef = useRef(false);
+  // Stable refs to props so the cleanup useEffect can flush without
+  // re-binding every render.
+  const exercisesRef = useRef(exercises);
+  exercisesRef.current = exercises;
+  const dayRef = useRef(day);
+  dayRef.current = day;
+  const onAutoSaveRef = useRef(onAutoSave);
+  onAutoSaveRef.current = onAutoSave;
+
+  const flushSaveNow = useCallback(async () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const myVersion = editVersionRef.current;
+    setSaveStatus('saving');
+    try {
+      await onAutoSaveRef.current({ ...dayRef.current, exercises: exercisesRef.current });
+      // Only flip to "saved" if no newer edit landed mid-flight.
+      if (myVersion === editVersionRef.current) {
+        setSaveStatus('saved');
+        setLastSavedAt(Date.now());
+      }
+    } catch (err) {
+      console.error('[IronTrack] autosave failed', err);
+      setSaveStatus('error');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasUserEditedRef.current) return;
+    setSaveStatus('dirty');
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      void flushSaveNow();
+    }, AUTOSAVE_DEBOUNCE_MS);
+  }, [exercises, flushSaveNow]);
+
+  // Flush on unmount — covers the back-arrow exit, the parent route swap,
+  // and tab-close (browser does best-effort beforeunload). Without this,
+  // a keystroke made <800ms before exit would be lost.
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        // Fire-and-forget — we're tearing down anyway. The mutation is
+        // idempotent (UPDATE by id) so a duplicate is harmless if the
+        // browser somehow flushes it after the new view fetches.
+        void onAutoSaveRef.current({ ...dayRef.current, exercises: exercisesRef.current });
+      }
+    };
+  }, []);
 
   // Derived workout-level progress for the gradient progress bar at the top.
   const totalSets = useMemo(
@@ -153,6 +235,8 @@ export function WorkoutGridLogger({
     if (['actualLoad', 'actualRpe'].includes(field) && value.trim() !== '') {
       hapticTick();
     }
+    hasUserEditedRef.current = true;
+    editVersionRef.current += 1;
     const setMatch = field.match(/^set_(\d+)_(load|rpe)$/);
     setExercises((prev) =>
       prev.map((ex) => {
@@ -181,6 +265,8 @@ export function WorkoutGridLogger({
 
   const toggleSetDone = (id: string, setN: number) => {
     hapticTick();
+    hasUserEditedRef.current = true;
+    editVersionRef.current += 1;
     const key = setDoneKey(setN);
     setExercises((prev) =>
       prev.map((ex) => {
@@ -191,10 +277,24 @@ export function WorkoutGridLogger({
     );
   };
 
-  const handleSave = () => {
+  const handleFinish = useCallback(async () => {
+    // Cancel the pending autosave — onFinish persists everything AND marks
+    // the day complete, so the autosave would just be redundant.
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
     hapticSuccess();
-    onSave({ ...day, exercises });
-  };
+    setSaveStatus('saving');
+    try {
+      await onFinish({ ...dayRef.current, exercises: exercisesRef.current });
+      // After a successful finish the parent unmounts this component, so
+      // setSaveStatus('saved') would be a no-op. Leave it.
+    } catch (err) {
+      console.error('[IronTrack] finish failed', err);
+      setSaveStatus('error');
+    }
+  }, [onFinish]);
 
   const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0] && uploadingFor) {
@@ -204,12 +304,27 @@ export function WorkoutGridLogger({
     }
   };
 
+  // Confirmation handler — wraps handleFinish with a check for partially-
+  // logged sessions. We use window.confirm because it's the simplest
+  // dependable cross-platform dialog and matches the pattern already used
+  // by archive/delete elsewhere in the app.
+  const handleFinishWithConfirm = useCallback(async () => {
+    const total = exercises.reduce((s, ex) => s + setCount(ex), 0);
+    const done = exercises.reduce((s, ex) => s + countDoneSets(ex), 0);
+    if (total > 0 && done < total) {
+      const ok = window.confirm(
+        `${done} of ${total} sets logged. Finish workout anyway?`,
+      );
+      if (!ok) return;
+    }
+    await handleFinish();
+  }, [exercises, handleFinish]);
+
   return (
     <div className="space-y-4 md:space-y-6 h-full flex flex-col">
       {/* ── Top header ─────────────────────────────────────────────────────
-           Premium feel: client/day metadata on the left, prominent save
-           button on the right. Day name italicised in the serif display
-           face for hierarchy. */}
+           Premium feel: client/day metadata on the left, save-status
+           indicator + Finish CTA on the right. */}
       <header className="flex justify-between items-end gap-3">
         <div className="flex items-center gap-3 md:gap-5 min-w-0">
           <button
@@ -229,11 +344,13 @@ export function WorkoutGridLogger({
             <h1 className="text-2xl md:text-4xl font-bold tracking-tighter italic font-serif text-foreground truncate leading-none">
               {day.name}
             </h1>
+            <SaveStatusBadge status={saveStatus} lastSavedAt={lastSavedAt} />
           </div>
         </div>
         <button
-          onClick={handleSave}
-          data-testid="save-session-btn"
+          onClick={() => void handleFinishWithConfirm()}
+          data-testid="finish-session-btn"
+          aria-label="Finish workout"
           className="
             btn-press shrink-0 group relative overflow-hidden
             bg-gradient-to-br from-emerald-500 to-emerald-600
@@ -245,8 +362,8 @@ export function WorkoutGridLogger({
             flex items-center gap-2 min-h-[44px]
           "
         >
-          <Save className="w-4 h-4" />
-          <span className="hidden md:inline">Save Session</span>
+          <Trophy className="w-4 h-4" />
+          <span className="hidden md:inline">Finish Workout</span>
         </button>
       </header>
 
@@ -551,6 +668,47 @@ export function WorkoutGridLogger({
             </motion.section>
           );
         })}
+
+        {/* ── Bottom Finish CTA ─────────────────────────────────────────
+             Lives inside the scroll area so the trainee naturally hits it
+             after the last exercise. The big green hero is the obvious
+             "I'm done" target — pairs with the smaller header CTA for
+             when the user wants to bail out earlier. */}
+        <button
+          onClick={() => void handleFinishWithConfirm()}
+          data-testid="finish-session-btn-bottom"
+          className="
+            mt-2 group relative overflow-hidden w-full
+            rounded-2xl border border-emerald-500/40
+            bg-gradient-to-br from-emerald-500/15 via-emerald-500/8 to-card
+            shadow-[0_8px_32px_-12px_rgba(16,185,129,0.45)]
+            hover:border-emerald-500/60 hover:shadow-[0_8px_40px_-10px_rgba(16,185,129,0.55)]
+            transition-all duration-300 px-5 md:px-7 py-5 md:py-6
+            flex items-center gap-4 md:gap-5
+          "
+        >
+          <div className="absolute -top-12 -right-12 w-40 h-40 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
+          <div className="
+            shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl
+            bg-gradient-to-br from-emerald-500 to-emerald-600
+            flex items-center justify-center
+            shadow-lg shadow-emerald-500/30
+            group-hover:scale-105 transition-transform duration-200
+          ">
+            <Trophy className="w-5 h-5 md:w-6 md:h-6 text-white" />
+          </div>
+          <div className="relative min-w-0 flex-1 text-left">
+            <div className="text-[10px] md:text-[11px] font-mono uppercase tracking-[0.18em] text-emerald-400/90">
+              {totalDone === totalSets ? 'All Sets Logged' : `${totalDone} / ${totalSets} Sets Logged`}
+            </div>
+            <div className="text-lg md:text-xl font-bold tracking-tight italic font-serif text-foreground mt-0.5">
+              Finish Workout
+            </div>
+            <div className="text-[10px] md:text-[11px] font-mono text-muted-foreground mt-0.5">
+              Marks today complete and returns to your dashboard
+            </div>
+          </div>
+        </button>
       </div>
 
       <input
@@ -576,6 +734,61 @@ export function WorkoutGridLogger({
           setPlateCalcExerciseId(null);
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * Subtle save indicator under the day-name title. Renders nothing when
+ * idle to keep the header clean for fresh sessions; once the trainee
+ * starts editing, switches to "Saving…" / "Saved" / "Unsaved changes" /
+ * "Save failed" with appropriate iconography.
+ */
+function SaveStatusBadge({
+  status,
+  lastSavedAt,
+}: {
+  status: SaveStatus;
+  lastSavedAt: number | null;
+}) {
+  if (status === 'idle') return null;
+  const ago = lastSavedAt ? Math.max(0, Math.round((Date.now() - lastSavedAt) / 1000)) : null;
+  const cfg =
+    status === 'saving'
+      ? {
+          icon: <Loader2 className="w-3 h-3 animate-spin" />,
+          text: 'Saving…',
+          tone: 'text-muted-foreground',
+        }
+      : status === 'saved'
+        ? {
+            icon: <Cloud className="w-3 h-3" />,
+            text: ago != null && ago < 60 ? 'Saved' : `Saved · ${ago}s ago`,
+            tone: 'text-emerald-400/80',
+          }
+        : status === 'error'
+          ? {
+              icon: <CloudOff className="w-3 h-3" />,
+              text: 'Save failed — keep typing to retry',
+              tone: 'text-red-400',
+            }
+          : {
+              // status === 'dirty' — edit just landed, autosave timer ticking
+              icon: <Cloud className="w-3 h-3 opacity-50" />,
+              text: 'Unsaved changes',
+              tone: 'text-amber-400/80',
+            };
+  return (
+    <div
+      className={cn(
+        'mt-1 flex items-center gap-1 text-[9px] md:text-[10px] font-mono uppercase tracking-[0.18em]',
+        cfg.tone,
+      )}
+      data-testid="save-status"
+      aria-live="polite"
+    >
+      {cfg.icon}
+      <span>{cfg.text}</span>
     </div>
   );
 }

@@ -250,17 +250,39 @@ export function useProgramData(authenticatedUser: Client | null) {
 
 
   const saveSession = useCallback(
-    async (clientId: string, _programId: string, _weekId: string, day: WorkoutDay) => {
-      const loggedAt = new Date().toISOString();
-      // Update the day's logged_at first so the UI reflects "saved" timestamp.
+    async (
+      clientId: string,
+      _programId: string,
+      _weekId: string,
+      day: WorkoutDay,
+      opts: { markComplete?: boolean } = {},
+    ) => {
+      // markComplete:
+      //   true  → "Finish Workout" path. Stamps days.logged_at with now()
+      //           so the day shows up as completed in the dashboard.
+      //   false → "Autosave" path. Persists exercise actuals without
+      //           touching logged_at, so the trainee can put the phone
+      //           down mid-workout and come back later without the day
+      //           appearing as already finished.
+      // Default true preserves the prior contract for any caller not yet
+      // updated.
+      const markComplete = opts.markComplete ?? true;
+
+      const dayUpdate: { name: string; logged_at?: string } = { name: day.name };
+      let nextLoggedAt = day.loggedAt ?? null;
+      if (markComplete) {
+        nextLoggedAt = new Date().toISOString();
+        dayUpdate.logged_at = nextLoggedAt;
+      }
       const { error: dayErr } = await supabase
         .from('days')
-        .update({ logged_at: loggedAt, name: day.name })
+        .update(dayUpdate)
         .eq('id', day.id);
       if (dayErr) throw dayErr;
 
-      // Push every exercise's actuals + values. We use an upsert keyed by id
-      // so this also handles any locally-mutated exercise rows.
+      // Push every exercise's actuals + values. Used by both autosave and
+      // finish — the actuals are the trainee's primary work product and
+      // should be persisted on every change, not held until "Finish".
       for (const ex of day.exercises) {
         const { error: exErr } = await supabase
           .from('exercises')
@@ -279,8 +301,8 @@ export function useProgramData(authenticatedUser: Client | null) {
         if (exErr) throw exErr;
       }
 
-      // Patch local state in place (no full refetch needed — we already have
-      // the new shape). This keeps the trainee's UI snappy after Save Session.
+      // Patch local state in place — the new exercises array IS the truth
+      // post-save, and a refetch would just re-fetch what we already have.
       setClients((prev) => prev.map((c) => {
         if (c.id !== clientId) return c;
         return {
@@ -289,7 +311,11 @@ export function useProgramData(authenticatedUser: Client | null) {
             ...p,
             weeks: p.weeks.map((w) => ({
               ...w,
-              days: w.days.map((d) => (d.id === day.id ? { ...day, loggedAt } : d)),
+              days: w.days.map((d) =>
+                d.id === day.id
+                  ? { ...day, loggedAt: nextLoggedAt ?? undefined }
+                  : d,
+              ),
             })),
           })),
         };

@@ -47,6 +47,9 @@ const CLIENT: Client = {
   programs: [PROGRAM],
 };
 
+// Common no-op props for the autosave + finish callbacks.
+const noopAsync = () => Promise.resolve();
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('WorkoutGridLogger', () => {
@@ -58,7 +61,8 @@ describe('WorkoutGridLogger', () => {
         week={WEEK}
         day={DAY}
         onBack={vi.fn()}
-        onSave={vi.fn()}
+        onAutoSave={noopAsync}
+        onFinish={noopAsync}
       />
     );
 
@@ -77,7 +81,8 @@ describe('WorkoutGridLogger', () => {
         week={WEEK}
         day={DAY}
         onBack={vi.fn()}
-        onSave={vi.fn()}
+        onAutoSave={noopAsync}
+        onFinish={noopAsync}
       />
     );
 
@@ -101,7 +106,8 @@ describe('WorkoutGridLogger', () => {
         week={WEEK}
         day={DAY}
         onBack={vi.fn()}
-        onSave={vi.fn()}
+        onAutoSave={noopAsync}
+        onFinish={noopAsync}
       />
     );
 
@@ -111,9 +117,9 @@ describe('WorkoutGridLogger', () => {
     expect(input).toHaveValue('140');
   });
 
-  it('Save Session propagates the typed value, including dual-writing set 1 to ex.actualLoad for legacy readers', async () => {
+  it('Finish Workout propagates the typed value, including dual-writing set 1 to ex.actualLoad for legacy readers', async () => {
     const user = userEvent.setup();
-    const onSave = vi.fn();
+    const onFinish = vi.fn().mockResolvedValue(undefined);
 
     render(
       <WorkoutGridLogger
@@ -122,7 +128,8 @@ describe('WorkoutGridLogger', () => {
         week={WEEK}
         day={DAY}
         onBack={vi.fn()}
-        onSave={onSave}
+        onAutoSave={noopAsync}
+        onFinish={onFinish}
       />
     );
 
@@ -130,11 +137,20 @@ describe('WorkoutGridLogger', () => {
     await user.clear(input);
     await user.type(input, '120');
 
-    const saveBtn = screen.getByTestId('save-session-btn');
-    fireEvent.click(saveBtn);
+    // Confirm the "finish anyway?" prompt that pops because the session
+    // isn't fully logged.
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 
-    expect(onSave).toHaveBeenCalledOnce();
-    const savedDay: WorkoutDay = onSave.mock.calls[0][0];
+    // The bottom Finish CTA is the same handler as the header one but is
+    // the more visible / typical entry point on mobile.
+    const finishBtn = screen.getByTestId('finish-session-btn-bottom');
+    fireEvent.click(finishBtn);
+
+    // onFinish is called asynchronously after the confirm; flush microtasks.
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(onFinish).toHaveBeenCalledOnce();
+    const savedDay: WorkoutDay = onFinish.mock.calls[0][0];
     expect(savedDay.id).toBe('d1');
     const savedEx = savedDay.exercises[0];
     // Set 1's load is the source of truth on ex.values.set_1_load …
@@ -142,11 +158,12 @@ describe('WorkoutGridLogger', () => {
     // … AND mirrored to ex.actualLoad so analytics views that still read
     // the legacy single-actual field stay coherent with the latest entry.
     expect(savedEx.actualLoad).toBe('120');
+    confirmSpy.mockRestore();
   });
 
   it('per-set rows independently store load values for sets 2..N', async () => {
     const user = userEvent.setup();
-    const onSave = vi.fn();
+    const onFinish = vi.fn().mockResolvedValue(undefined);
 
     render(
       <WorkoutGridLogger
@@ -155,7 +172,8 @@ describe('WorkoutGridLogger', () => {
         week={WEEK}
         day={DAY}
         onBack={vi.fn()}
-        onSave={onSave}
+        onAutoSave={noopAsync}
+        onFinish={onFinish}
       />
     );
 
@@ -163,13 +181,53 @@ describe('WorkoutGridLogger', () => {
     await user.type(screen.getByTestId('input-e1-set-2-load'), '105');
     await user.type(screen.getByTestId('input-e1-set-3-load'), '110');
 
-    fireEvent.click(screen.getByTestId('save-session-btn'));
-    const savedEx = (onSave.mock.calls[0][0] as WorkoutDay).exercises[0];
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(screen.getByTestId('finish-session-btn-bottom'));
+    await new Promise((r) => setTimeout(r, 0));
+
+    const savedEx = (onFinish.mock.calls[0][0] as WorkoutDay).exercises[0];
     expect(savedEx.values?.set_1_load).toBe('100');
     expect(savedEx.values?.set_2_load).toBe('105');
     expect(savedEx.values?.set_3_load).toBe('110');
     // Legacy mirror only happens for set 1.
     expect(savedEx.actualLoad).toBe('100');
+    confirmSpy.mockRestore();
+  });
+
+  it('autosave fires after a typing burst (debounced) without exiting the workout', async () => {
+    vi.useFakeTimers();
+    const onAutoSave = vi.fn().mockResolvedValue(undefined);
+    const onFinish = vi.fn();
+
+    render(
+      <WorkoutGridLogger
+        client={CLIENT}
+        program={PROGRAM}
+        week={WEEK}
+        day={DAY}
+        onBack={vi.fn()}
+        onAutoSave={onAutoSave}
+        onFinish={onFinish}
+      />
+    );
+
+    const input = screen.getByTestId('input-e1-set-1-load') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '100' } });
+
+    // Pre-debounce — autosave hasn't fired yet.
+    expect(onAutoSave).not.toHaveBeenCalled();
+
+    // Past the debounce — autosave fires once with the latest snapshot.
+    await vi.advanceTimersByTimeAsync(900);
+    expect(onAutoSave).toHaveBeenCalled();
+    const autosavedDay = onAutoSave.mock.calls[0][0] as WorkoutDay;
+    expect(autosavedDay.exercises[0].values?.set_1_load).toBe('100');
+
+    // onFinish must NOT be called by autosave — the only path that exits
+    // the workout view is the explicit Finish button.
+    expect(onFinish).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
   });
 
   it('calls onBack when the back arrow is clicked', () => {
@@ -181,7 +239,8 @@ describe('WorkoutGridLogger', () => {
         week={WEEK}
         day={DAY}
         onBack={onBack}
-        onSave={vi.fn()}
+        onAutoSave={noopAsync}
+        onFinish={noopAsync}
       />
     );
 

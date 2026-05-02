@@ -644,15 +644,42 @@ export default function App() {
     }
   };
 
-  const handleSaveSession = (updatedDay: WorkoutDay) => {
+  /** Silent autosave — persists actuals without setting day.logged_at and
+   *  without exiting the workout view. Called by the WorkoutGridLogger
+   *  after every keystroke (debounced internally). */
+  const handleAutoSaveSession = async (updatedDay: WorkoutDay): Promise<void> => {
     if (!selectedClient || !activeWorkout) return;
     const program =
       selectedClient.programs.find((p) => p.id === selectedClient.activeProgramId && p.status !== 'archived') ??
       selectedClient.programs.find((p) => p.status !== 'archived');
     if (!program) return;
-    saveSession(selectedClient.id, program.id, activeWorkout.week.id, updatedDay);
+    await saveSession(
+      selectedClient.id,
+      program.id,
+      activeWorkout.week.id,
+      updatedDay,
+      { markComplete: false },
+    );
+  };
+
+  /** Explicit "Finish Workout" — stamps day.logged_at, exits back to the
+   *  client dashboard, and surfaces the success toast. The trainee can
+   *  put the phone down mid-workout without triggering this. */
+  const handleFinishSession = async (updatedDay: WorkoutDay): Promise<void> => {
+    if (!selectedClient || !activeWorkout) return;
+    const program =
+      selectedClient.programs.find((p) => p.id === selectedClient.activeProgramId && p.status !== 'archived') ??
+      selectedClient.programs.find((p) => p.status !== 'archived');
+    if (!program) return;
+    await saveSession(
+      selectedClient.id,
+      program.id,
+      activeWorkout.week.id,
+      updatedDay,
+      { markComplete: true },
+    );
     setActiveWorkout(null);
-    setToast('Session saved successfully');
+    setToast('Workout finished — well done!');
   };
 
   const handleAddCoach = async (name: string, email: string, password: string): Promise<Client> => {
@@ -825,7 +852,8 @@ export default function App() {
           week={activeWorkout.week}
           day={activeWorkout.day}
           onBack={() => setActiveWorkout(null)}
-          onSave={handleSaveSession}
+          onAutoSave={handleAutoSaveSession}
+          onFinish={handleFinishSession}
         />
         <RestTimer />
       </AppShell>
