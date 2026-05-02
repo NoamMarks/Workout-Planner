@@ -8,12 +8,18 @@
  * profiles row, then patches that profile so its tenant_id points at itself
  * (a coach is the root of their own tenant).
  *
+ * Auth gate:
+ *   - Caller must present a valid Supabase JWT in the Authorization header
+ *     (Bearer token). Missing / malformed / expired token → 401.
+ *   - The token's user must have role IN ('admin','superadmin'). Trainee or
+ *     unknown role → 403.
+ *
  * Required Vercel env vars (NOT prefixed with VITE_ — must stay server-only):
  *   VITE_SUPABASE_URL         Project URL (re-used by the server runtime).
  *   SUPABASE_SERVICE_ROLE_KEY Service-role key. NEVER expose to the browser.
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 interface CreateCoachPayload {
   name?: unknown;
@@ -29,6 +35,50 @@ function setCors(res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+}
+
+function extractBearer(req: VercelRequest): string | null {
+  const h = req.headers.authorization ?? req.headers.Authorization;
+  const header = Array.isArray(h) ? h[0] : h;
+  if (!header || typeof header !== 'string') return null;
+  if (!header.toLowerCase().startsWith('bearer ')) return null;
+  const token = header.slice(7).trim();
+  return token.length > 0 ? token : null;
+}
+
+/**
+ * Validate the bearer token and confirm the caller is an admin or superadmin.
+ * Returns the caller's profile row on success, a status+message on failure.
+ */
+async function authorizeCaller(supabase: SupabaseClient, token: string): Promise<
+  | { ok: true; userId: string; role: string }
+  | { ok: false; status: 401 | 403; message: string }
+> {
+  const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+  if (userErr || !userData?.user) {
+    return { ok: false, status: 401, message: 'Invalid or expired access token.' };
+  }
+  const userId = userData.user.id;
+  const { data: profile, error: profileErr } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', userId)
+    .single<{ role: string }>();
+  if (profileErr || !profile) {
+    return {
+      ok: false,
+      status: 403,
+      message: 'Profile not found for the calling user.',
+    };
+  }
+  if (profile.role !== 'admin' && profile.role !== 'superadmin') {
+    return {
+      ok: false,
+      status: 403,
+      message: 'Forbidden: only admins or superadmins may create coaches.',
+    };
+  }
+  return { ok: true, userId, role: profile.role };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -50,6 +100,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'Admin create-user is not configured.' });
   }
 
+  const supabase = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  // ── Auth gate ──────────────────────────────────────────────────────────
+  const token = extractBearer(req);
+  if (!token) {
+    return res.status(401).json({
+      error: 'Missing or malformed Authorization header. Expected: Bearer <jwt>.',
+    });
+  }
+  const auth = await authorizeCaller(supabase, token);
+  if (!auth.ok) {
+    return res.status(auth.status).json({ error: auth.message });
+  }
+
+  // ── Payload validation ─────────────────────────────────────────────────
   const body = (req.body ?? {}) as CreateCoachPayload;
   if (!isString(body.name) || !isString(body.email) || !isString(body.password)) {
     return res.status(400).json({ error: 'Missing or invalid fields: name, email, password' });
@@ -58,10 +125,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const name = body.name.trim();
   const email = body.email.trim().toLowerCase();
   const password = body.password;
-
-  const supabase = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
 
   try {
     const { data, error } = await supabase.auth.admin.createUser({
@@ -79,10 +142,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const userId = data.user.id;
 
-    // The on_auth_user_created trigger has just inserted the profiles row.
-    // Repoint tenant_id at the user themselves — coaches sit at the root of
-    // their own tenant — and ensure name/role are persisted server-side
-    // (the trigger may not pick up user_metadata depending on its body).
     const { data: profile, error: updateErr } = await supabase
       .from('profiles')
       .update({ tenant_id: userId, name, role: 'admin' })

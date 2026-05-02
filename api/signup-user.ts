@@ -8,6 +8,14 @@
  * shortcuts the confirmation step so the user can log in immediately after
  * entering their OTP, while keeping the service-role key off the client.
  *
+ * Server-side invite verification:
+ *   The caller passes BOTH `tenantId` and `inviteCode`. Before creating any
+ *   auth user, this function looks up the invite_codes row by code and
+ *   asserts that (a) it exists, (b) its tenant_id matches the requested
+ *   tenantId, and (c) it is not exhausted. Without this gate, any
+ *   unauthenticated client could mint trainees in arbitrary tenants by
+ *   guessing tenant uuids — an authentication-free privilege escalation.
+ *
  * Required Vercel env vars (server-only — no VITE_ prefix on the secret):
  *   VITE_SUPABASE_URL          Project URL (also used by the browser bundle).
  *   SUPABASE_SERVICE_ROLE_KEY  Service-role key. NEVER expose to the browser.
@@ -20,6 +28,7 @@ interface SignupPayload {
   email?: unknown;
   password?: unknown;
   tenantId?: unknown;
+  inviteCode?: unknown;
 }
 
 function isString(v: unknown): v is string {
@@ -30,6 +39,10 @@ function setCors(res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+}
+
+function normalizeInviteCode(input: string): string {
+  return input.replace(/\s+/g, '').toUpperCase();
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -56,10 +69,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     !isString(body.name) ||
     !isString(body.email) ||
     !isString(body.password) ||
-    !isString(body.tenantId)
+    !isString(body.tenantId) ||
+    !isString(body.inviteCode)
   ) {
     return res.status(400).json({
-      error: 'Missing or invalid fields: name, email, password, tenantId',
+      error: 'Missing or invalid fields: name, email, password, tenantId, inviteCode',
     });
   }
 
@@ -67,17 +81,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const email = body.email.trim().toLowerCase();
   const password = body.password;
   const tenantId = body.tenantId.trim();
+  const inviteCode = normalizeInviteCode(body.inviteCode);
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
+  // ── Server-side invite verification ────────────────────────────────────
+  // Use the service-role client (RLS bypassed) to look up the invite by
+  // code. Then enforce the tenant match + use cap. Done BEFORE we touch
+  // auth.users so a rejected invite doesn't pollute the auth table.
+  const { data: invite, error: inviteErr } = await supabase
+    .from('invite_codes')
+    .select('id, tenant_id, max_uses, use_count')
+    .eq('code', inviteCode)
+    .maybeSingle<{ id: string; tenant_id: string; max_uses: number | null; use_count: number | null }>();
+
+  if (inviteErr) {
+    console.error('[signup-user] invite lookup failed', inviteErr);
+    return res.status(500).json({ error: 'Could not verify invite.' });
+  }
+  if (!invite) {
+    return res.status(400).json({ error: 'Invalid invite code.' });
+  }
+  if (invite.tenant_id !== tenantId) {
+    // Caller tried to redirect a real invite at a different tenant —
+    // refuse, log loudly enough to investigate but don't leak which side
+    // mismatched (could be either a stale UI or an attacker).
+    console.warn('[signup-user] invite tenant mismatch', {
+      inviteId: invite.id,
+      requestedTenantId: tenantId,
+    });
+    return res.status(400).json({ error: 'Invalid invite code.' });
+  }
+  if (
+    invite.max_uses != null &&
+    invite.max_uses > 0 &&
+    (invite.use_count ?? 0) >= invite.max_uses
+  ) {
+    return res.status(400).json({ error: 'This invite code has been used up.' });
+  }
+
   try {
     const { data, error } = await supabase.auth.admin.createUser({
       email,
       password,
-      // The whole point of this endpoint: skip the email-confirmation step
-      // so the trainee can log in immediately after entering their OTP.
       email_confirm: true,
       user_metadata: { name, role: 'trainee', tenant_id: tenantId },
     });

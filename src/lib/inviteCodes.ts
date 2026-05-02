@@ -131,19 +131,23 @@ export async function lookupInviteCode(code: string): Promise<InviteCode | null>
 export async function consumeInviteCode(code: string): Promise<void> {
   const normalized = normalizeInviteCode(code);
   if (!normalized) return;
-  // Atomically increment use_count via a SQL expression. supabase-js doesn't
-  // expose `raw('use_count + 1')` directly, so we read+write — acceptable
-  // because invites have low write contention (one signup per code).
-  const { data: existing, error: fetchErr } = await supabase
-    .from('invite_codes')
-    .select('id, use_count')
-    .eq('code', normalized)
-    .maybeSingle<{ id: string; use_count: number | null }>();
-  if (fetchErr || !existing) return;
-  await supabase
-    .from('invite_codes')
-    .update({ use_count: (existing.use_count ?? 0) + 1 })
-    .eq('id', existing.id);
+  // Use the public.increment_invite_usage RPC instead of a read+write on the
+  // table directly. The newly-signed-up trainee is NOT the coach, so the
+  // invite_codes_update_own RLS policy rejects a direct UPDATE — that's why
+  // use_count never incremented in the wild. The RPC is SECURITY DEFINER, so
+  // it runs with the table-owner's privileges and bumps the counter
+  // atomically. Wrap in try/catch so a transient failure here never crashes
+  // the user's freshly-successful signup.
+  try {
+    const { error } = await supabase.rpc('increment_invite_usage', {
+      invite_code: normalized,
+    });
+    if (error) {
+      console.warn('[IronTrack invite] increment_invite_usage RPC failed', error);
+    }
+  } catch (err) {
+    console.warn('[IronTrack invite] increment_invite_usage threw', err);
+  }
 }
 
 export async function deleteInviteCode(codeId: string): Promise<void> {

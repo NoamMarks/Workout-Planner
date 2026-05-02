@@ -67,7 +67,7 @@ describe('WorkoutGridLogger', () => {
     expect(screen.getByText(/Lower Body A/)).toBeInTheDocument();
   });
 
-  it('renders plan columns as read-only and actual columns as inputs', () => {
+  it('condenses plan columns into a per-exercise summary string and renders one input row per planned set', () => {
     render(
       <WorkoutGridLogger
         client={CLIENT}
@@ -79,18 +79,18 @@ describe('WorkoutGridLogger', () => {
       />
     );
 
-    // Plan values are rendered as static text
-    expect(screen.getByText('4')).toBeInTheDocument(); // sets
-    expect(screen.getByText('5')).toBeInTheDocument(); // reps
+    // The plan is now collapsed into the exercise header summary, e.g.
+    // "Plan: 4 × 5". The exact phrasing lives in buildPlanSummary.
+    expect(screen.getByTestId('plan-summary-0')).toHaveTextContent('4 × 5');
 
-    // Actual inputs exist (data-testid pattern: input-{exId}-{colId})
-    const actualLoadInput = screen.getByTestId('input-e1-actualLoad');
-    const actualRpeInput  = screen.getByTestId('input-e1-actualRpe');
-    expect(actualLoadInput).toBeInTheDocument();
-    expect(actualRpeInput).toBeInTheDocument();
+    // 4 planned sets → 4 set rows, each with its own load + rpe input.
+    for (let n = 1; n <= 4; n += 1) {
+      expect(screen.getByTestId(`input-e1-set-${n}-load`)).toBeInTheDocument();
+      expect(screen.getByTestId(`input-e1-set-${n}-rpe`)).toBeInTheDocument();
+    }
   });
 
-  it('allows a trainee to type an actual load value', async () => {
+  it('allows a trainee to type a per-set load value', async () => {
     const user = userEvent.setup();
     render(
       <WorkoutGridLogger
@@ -103,13 +103,13 @@ describe('WorkoutGridLogger', () => {
       />
     );
 
-    const input = screen.getByTestId('input-e1-actualLoad');
+    const input = screen.getByTestId('input-e1-set-1-load');
     await user.clear(input);
     await user.type(input, '140');
     expect(input).toHaveValue('140');
   });
 
-  it('calls onSave with updated exercises when Save Session is clicked', async () => {
+  it('Save Session propagates the typed value, including dual-writing set 1 to ex.actualLoad for legacy readers', async () => {
     const user = userEvent.setup();
     const onSave = vi.fn();
 
@@ -124,21 +124,50 @@ describe('WorkoutGridLogger', () => {
       />
     );
 
-    // Log actual load
-    const input = screen.getByTestId('input-e1-actualLoad');
+    const input = screen.getByTestId('input-e1-set-1-load');
     await user.clear(input);
     await user.type(input, '120');
 
-    // Save
     const saveBtn = screen.getByTestId('save-session-btn');
     fireEvent.click(saveBtn);
 
     expect(onSave).toHaveBeenCalledOnce();
-
     const savedDay: WorkoutDay = onSave.mock.calls[0][0];
     expect(savedDay.id).toBe('d1');
-    // The exercise should carry the typed actual load
-    expect(savedDay.exercises[0].actualLoad).toBe('120');
+    const savedEx = savedDay.exercises[0];
+    // Set 1's load is the source of truth on ex.values.set_1_load …
+    expect(savedEx.values?.set_1_load).toBe('120');
+    // … AND mirrored to ex.actualLoad so analytics views that still read
+    // the legacy single-actual field stay coherent with the latest entry.
+    expect(savedEx.actualLoad).toBe('120');
+  });
+
+  it('per-set rows independently store load values for sets 2..N', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+
+    render(
+      <WorkoutGridLogger
+        client={CLIENT}
+        program={PROGRAM}
+        week={WEEK}
+        day={DAY}
+        onBack={vi.fn()}
+        onSave={onSave}
+      />
+    );
+
+    await user.type(screen.getByTestId('input-e1-set-1-load'), '100');
+    await user.type(screen.getByTestId('input-e1-set-2-load'), '105');
+    await user.type(screen.getByTestId('input-e1-set-3-load'), '110');
+
+    fireEvent.click(screen.getByTestId('save-session-btn'));
+    const savedEx = (onSave.mock.calls[0][0] as WorkoutDay).exercises[0];
+    expect(savedEx.values?.set_1_load).toBe('100');
+    expect(savedEx.values?.set_2_load).toBe('105');
+    expect(savedEx.values?.set_3_load).toBe('110');
+    // Legacy mirror only happens for set 1.
+    expect(savedEx.actualLoad).toBe('100');
   });
 
   it('calls onBack when the back arrow is clicked', () => {

@@ -160,15 +160,20 @@ test.describe('Program Editor — rapid typing and debounce coalescing', () => {
 });
 
 test.describe('Program Editor — bad data input', () => {
-  test('extremely large strings in exerciseName render without breaking the grid', async ({ page }) => {
+  test('extremely large strings in exerciseName are capped at maxLength=150', async ({ page }) => {
     await gotoAdminProgramEditor(page);
 
     const huge = 'X'.repeat(1000);
     const exName = cellInput(exerciseRow(page, 0), 0);
     await exName.click();
     await exName.fill(huge);
-    await expect(exName).toHaveValue(huge);
-    // Row is still intact; column header still visible.
+    // The cell now has maxLength=150; the browser truncates the in-flight
+    // input event so React state never holds more than 150 chars. We assert
+    // the value is bounded — defends both against UI breakage AND the
+    // database-abuse vector.
+    const value = await exName.inputValue();
+    expect(value.length).toBeLessThanOrEqual(150);
+    expect(value.length).toBeGreaterThan(0);
     await expect(page.getByText(/EXERCISE NAME/i).first()).toBeVisible();
   });
 
@@ -186,14 +191,16 @@ test.describe('Program Editor — bad data input', () => {
     }
   });
 
-  test('a 10000-character paste into the program-name input is handled without dropping characters', async ({ page }) => {
+  test('a 10000-character paste into the program-name input is capped at maxLength=150', async ({ page }) => {
     await gotoAdminProgramEditor(page);
 
     const pName = programNameInput(page);
     const giant = 'A'.repeat(10_000);
     await pName.click();
     await pName.fill(giant);
-    await expect(pName).toHaveValue(giant);
+    const value = await pName.inputValue();
+    expect(value.length).toBeLessThanOrEqual(150);
+    expect(value.length).toBeGreaterThan(0);
   });
 });
 

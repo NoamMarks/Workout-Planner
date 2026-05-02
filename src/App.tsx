@@ -571,10 +571,21 @@ export default function App() {
     await login(email, password);
   };
 
-  const handleSignupComplete = async (name: string, email: string, password: string, tenantId: string) => {
+  const handleSignupComplete = async (
+    name: string,
+    email: string,
+    password: string,
+    tenantId: string,
+    inviteCode: string,
+  ) => {
     // Defensive: empty tenantId would mean a corrupt invite slipped through.
     if (!tenantId || !tenantId.trim()) {
       const err = new Error(`handleSignupComplete: tenantId is required (got "${tenantId}"). The invite code may be corrupt.`);
+      console.error('[IronTrack signup]', err);
+      throw err;
+    }
+    if (!inviteCode || !inviteCode.trim()) {
+      const err = new Error('handleSignupComplete: inviteCode is required.');
       console.error('[IronTrack signup]', err);
       throw err;
     }
@@ -584,6 +595,11 @@ export default function App() {
       // key to call admin.createUser({ email_confirm: true }), which skips
       // the inbox-confirmation hurdle so the OTP step IS the verification
       // gate. The service-role key never leaves the server.
+      //
+      // The endpoint VERIFIES the inviteCode server-side (it must exist,
+      // resolve to the requested tenantId, and not be exhausted). Without
+      // this gate, any unauthenticated caller could create trainees in
+      // arbitrary tenants by guessing tenantIds.
       const normalizedEmail = email.trim().toLowerCase();
       const response = await fetch('/api/signup-user', {
         method: 'POST',
@@ -593,6 +609,7 @@ export default function App() {
           email: normalizedEmail,
           password,
           tenantId: tenantId.trim(),
+          inviteCode: inviteCode.trim(),
         }),
       });
 
@@ -645,9 +662,21 @@ export default function App() {
     // user, lets the on_auth_user_created trigger insert the profiles row,
     // then repoints tenant_id at the new user (a coach is the root of their
     // own tenant) and returns the resulting profile.
+    //
+    // The endpoint requires a Bearer token so it can verify the caller's
+    // role server-side — without this header, anyone with the URL could
+    // mint coach accounts. Forward the current session's access token.
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) {
+      throw new Error('You must be logged in to create a coach.');
+    }
     const response = await fetch('/api/admin-create-user', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
       body: JSON.stringify({ name, email, password }),
     });
 

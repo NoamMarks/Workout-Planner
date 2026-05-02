@@ -7,6 +7,17 @@ interface TechnicalInputProps {
   className?: string;
   type?: string;
   readOnly?: boolean;
+  /** Hard cap on characters. Used by grid cells to prevent abuse. */
+  maxLength?: number;
+  /** Native browser tooltip — set this to `value` on truncating cells so a
+   *  hover reveals the full text when text-overflow is ellipsised. */
+  title?: string;
+  /** Hint to mobile browsers about which keyboard to show. `decimal` is the
+   *  big number pad on iOS/Android, ideal for weight + rep + RPE entry on
+   *  the gym floor. Combine with `pattern="[0-9]*"` for legacy iOS support. */
+  inputMode?: 'text' | 'decimal' | 'numeric' | 'tel' | 'email' | 'url' | 'search' | 'none';
+  pattern?: string;
+  autoComplete?: string;
   'data-testid'?: string;
 }
 
@@ -17,6 +28,11 @@ export function TechnicalInput({
   className,
   type = 'text',
   readOnly = false,
+  maxLength,
+  title,
+  inputMode,
+  pattern,
+  autoComplete,
   'data-testid': testId,
 }: TechnicalInputProps) {
   return (
@@ -26,6 +42,11 @@ export function TechnicalInput({
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       readOnly={readOnly}
+      maxLength={maxLength}
+      title={title}
+      inputMode={inputMode}
+      pattern={pattern}
+      autoComplete={autoComplete}
       data-testid={testId}
       className={cn(
         'bg-transparent border-none outline-none focus:ring-0 text-foreground font-mono text-sm w-full placeholder:text-muted-foreground',

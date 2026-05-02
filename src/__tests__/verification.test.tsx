@@ -100,7 +100,13 @@ describe('Verified Signup Flow', () => {
     fireEvent.click(screen.getByTestId('signup-verify-btn'));
 
     await waitFor(() => {
-      expect(onComplete).toHaveBeenCalledWith('Test User', 'test@test.com', 'Password1', 'tenant-A');
+      expect(onComplete).toHaveBeenCalledWith(
+        'Test User',
+        'test@test.com',
+        'Password1',
+        'tenant-A',
+        'VALID123',
+      );
     });
   });
 });

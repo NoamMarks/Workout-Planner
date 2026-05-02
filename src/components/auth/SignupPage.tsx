@@ -10,7 +10,13 @@ import { generateOTP, sendVerificationEmail } from '../../lib/verification';
 import type { InviteCode } from '../../types';
 
 interface SignupPageProps {
-  onComplete: (name: string, email: string, password: string, tenantId: string) => Promise<void>;
+  onComplete: (
+    name: string,
+    email: string,
+    password: string,
+    tenantId: string,
+    inviteCode: string,
+  ) => Promise<void>;
   onBack: () => void;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
@@ -117,7 +123,13 @@ export function SignupPage({ onComplete, onBack, theme, onToggleTheme, existingE
     setOtpError('');
     setSubmitting(true);
     try {
-      await onComplete(name.trim(), email.trim(), password, resolvedTenantId);
+      await onComplete(
+        name.trim(),
+        email.trim(),
+        password,
+        resolvedTenantId,
+        inviteCode.trim(),
+      );
       // Only consume the invite once the account creation succeeded — if onComplete
       // throws we leave the use count alone.
       await consumeInviteCode(inviteCode.trim());

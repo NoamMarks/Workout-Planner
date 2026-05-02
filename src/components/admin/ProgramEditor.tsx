@@ -257,7 +257,9 @@ export function ProgramEditor({ program, onChange }: ProgramEditorProps) {
           <input
             value={program.name}
             onChange={(e) => onChange({ ...program, name: e.target.value })}
-            className="text-3xl font-bold italic font-serif bg-transparent border-none outline-none focus:ring-0 p-0 text-foreground"
+            maxLength={150}
+            title={program.name}
+            className="text-3xl font-bold italic font-serif bg-transparent border-none outline-none focus:ring-0 p-0 text-foreground overflow-hidden text-ellipsis whitespace-nowrap"
           />
         </div>
         <div className="flex space-x-3">
@@ -315,7 +317,9 @@ export function ProgramEditor({ program, onChange }: ProgramEditorProps) {
                       <input
                         value={day.name}
                         onChange={(e) => updateDayName(day.dayNumber, e.target.value)}
-                        className="bg-transparent border-none outline-none text-2xl font-bold italic font-serif text-foreground focus:ring-0 p-0 w-64"
+                        maxLength={150}
+                        title={day.name}
+                        className="bg-transparent border-none outline-none text-2xl font-bold italic font-serif text-foreground focus:ring-0 p-0 w-64 overflow-hidden text-ellipsis whitespace-nowrap"
                       />
                     </div>
                     <div className="flex items-center space-x-4">
@@ -387,26 +391,34 @@ export function ProgramEditor({ program, onChange }: ProgramEditorProps) {
                             <TechnicalInput
                               value={ex.exerciseName}
                               onChange={(v) => updateExercise(week.id, day.id, ex.id, 'exerciseName', v)}
+                              maxLength={150}
+                              title={ex.exerciseName}
+                              className="overflow-hidden text-ellipsis whitespace-nowrap"
                             />
 
-                            {allCols.map((col) => (
-                              <div key={col.id} className="flex justify-center">
-                                {col.type === 'plan' ? (
-                                  <TechnicalInput
-                                    value={String(getExerciseValue(ex, col.id) ?? '')}
-                                    onChange={(val) =>
-                                      updateExercise(week.id, day.id, ex.id, col.id, val)
-                                    }
-                                    className="text-center"
-                                    placeholder="..."
-                                  />
-                                ) : (
-                                  <div className="text-[10px] font-mono text-muted-foreground/30 italic">
-                                    Trainee Input
-                                  </div>
-                                )}
-                              </div>
-                            ))}
+                            {allCols.map((col) => {
+                              const cellValue = String(getExerciseValue(ex, col.id) ?? '');
+                              return (
+                                <div key={col.id} className="flex justify-center min-w-0">
+                                  {col.type === 'plan' ? (
+                                    <TechnicalInput
+                                      value={cellValue}
+                                      onChange={(val) =>
+                                        updateExercise(week.id, day.id, ex.id, col.id, val)
+                                      }
+                                      maxLength={150}
+                                      title={cellValue}
+                                      className="text-center overflow-hidden text-ellipsis whitespace-nowrap"
+                                      placeholder="..."
+                                    />
+                                  ) : (
+                                    <div className="text-[10px] font-mono text-muted-foreground/30 italic">
+                                      Trainee Input
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
 
                             <button
                               onClick={() => deleteExercise(week.id, day.id, ex.id)}

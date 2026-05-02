@@ -262,25 +262,32 @@ create policy "programs_select"
     or public.current_role() = 'superadmin'
   );
 
+-- INSERT: ONLY coaches (admin) and superadmins. Without this role gate
+-- a trainee whose tenant_id is set to their coach's id could create
+-- arbitrary programs in the tenant — a privilege-escalation vector
+-- caught by the RLS pen-test suite (security-rls.spec.ts).
 create policy "programs_insert"
   on public.programs for insert to authenticated
   with check (
-    tenant_id = public.current_tenant_id()
+    (public.current_role() = 'admin' and tenant_id = public.current_tenant_id())
     or public.current_role() = 'superadmin'
   );
 
+-- UPDATE: coaches can edit programs in their tenant; superadmins can edit
+-- anything. Trainees do NOT update the programs table directly — their
+-- save-session writes land on `days.logged_at` and `exercises.actual_*`
+-- which have their own policies that explicitly allow trainee writes.
 create policy "programs_update"
   on public.programs for update to authenticated
   using (
-    tenant_id = public.current_tenant_id()
-    or client_id = auth.uid()
+    (public.current_role() = 'admin' and tenant_id = public.current_tenant_id())
     or public.current_role() = 'superadmin'
   );
 
 create policy "programs_delete"
   on public.programs for delete to authenticated
   using (
-    tenant_id = public.current_tenant_id()
+    (public.current_role() = 'admin' and tenant_id = public.current_tenant_id())
     or public.current_role() = 'superadmin'
   );
 
@@ -399,6 +406,47 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- =============================================================================
+-- RPC: increment_invite_usage(text)
+-- =============================================================================
+--
+-- Atomically increments use_count for an invite code. Called from the signup
+-- flow AFTER a successful trainee account creation. SECURITY DEFINER so the
+-- newly-created (still-RLS-restricted) trainee can bump the counter even
+-- though they don't own the row — the function runs with the table-owner's
+-- privileges and skips the invite_codes_update_own policy.
+--
+-- Returns true if a row matched and was updated, false otherwise (so the
+-- caller can no-op silently for stale / unknown codes without surfacing an
+-- error to the user mid-signup).
+
+-- DROP first so a re-run that changes the return type (e.g. void → boolean)
+-- doesn't fail with `42P13: cannot change return type of existing function`.
+drop function if exists public.increment_invite_usage(text);
+
+create function public.increment_invite_usage(invite_code text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  updated_id uuid;
+begin
+  if invite_code is null or btrim(invite_code) = '' then
+    return false;
+  end if;
+  update public.invite_codes
+     set use_count = use_count + 1
+   where code = upper(btrim(invite_code))
+   returning id into updated_id;
+  return updated_id is not null;
+end;
+$$;
+
+-- Allow both authenticated and anon to call this — the lookup is by secret
+-- code and the function refuses to update without one.
+grant execute on function public.increment_invite_usage(text) to authenticated, anon;
 
 -- =============================================================================
 -- Notes for Phase 2 (frontend migration) — NOT executed here:

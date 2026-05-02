@@ -197,6 +197,19 @@ export function useProgramData(authenticatedUser: Client | null) {
     void fetchData();
   }, [fetchData]);
 
+  // ─── Roster auto-refresh on tab refocus ──────────────────────────────
+  // When a coach texts/emails an invite link to an athlete and tabs back to
+  // IronTrack, we silently re-fetch so the new trainee shows up in the
+  // roster without a manual reload. The listener is bound to the same
+  // identity-keyed `fetchData` callback as the initial fetch, so it
+  // recreates only when the auth user changes — no infinite re-attach loop.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onFocus = () => { void fetchData(); };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [fetchData]);
+
   // ─── Mutations ────────────────────────────────────────────────────────
 
   const saveProgram = useCallback(
