@@ -916,14 +916,20 @@ export default function App() {
       >
         <ClientDashboard
           client={selectedClient}
-          onBack={() => {
-            if (authenticatedUser.role === 'admin' || impersonating) {
-              setSelectedClient(null);
-              setView('coach');
-            } else {
-              logout();
-            }
-          }}
+          // Coaches drilling into a client (or superadmins impersonating a
+          // coach drilled into a client) get a back arrow that returns to
+          // the client list. Trainees viewing their OWN dashboard get
+          // `undefined` — there's no parent view to go back to, and the
+          // arrow used to call logout() which trainees confused for a
+          // navigation gesture. Logout lives in the X icon up top.
+          onBack={
+            authenticatedUser.role === 'admin' || impersonating
+              ? () => {
+                  setSelectedClient(null);
+                  setView('coach');
+                }
+              : undefined
+          }
           onStartWorkout={(week, day) => setActiveWorkout({ week, day })}
         />
       </AppShell>

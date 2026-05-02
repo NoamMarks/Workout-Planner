@@ -9,7 +9,12 @@ import type { Client, Program, WorkoutWeek, WorkoutDay } from '../../types';
 
 interface ClientDashboardProps {
   client: Client;
-  onBack: () => void;
+  /** Where the back arrow takes the user. Pass `undefined` when the
+   *  current user has no parent view (a trainee viewing their own
+   *  dashboard) — the arrow is then hidden so it can't be confused for
+   *  a logout shortcut. The X in the AppShell nav is the canonical
+   *  logout entry point. */
+  onBack?: () => void;
   onStartWorkout: (week: WorkoutWeek, day: WorkoutDay) => void;
 }
 
@@ -58,10 +63,18 @@ export function ClientDashboard({ client, onBack, onStartWorkout }: ClientDashbo
     <div className="space-y-10">
       {/* Header */}
       <header className="flex justify-between items-end">
-        <div className="flex items-center space-x-8">
-          <motion.button whileHover={{ x: -4 }} onClick={onBack} className="p-3 hover:bg-muted transition-colors rounded-sm">
-            <ArrowLeft className="w-8 h-8 text-foreground" />
-          </motion.button>
+        <div className="flex items-center space-x-4 md:space-x-8">
+          {onBack && (
+            <motion.button
+              whileHover={{ x: -4 }}
+              onClick={onBack}
+              aria-label="Back"
+              data-testid="dashboard-back-btn"
+              className="p-3 hover:bg-muted transition-colors rounded-sm"
+            >
+              <ArrowLeft className="w-7 h-7 md:w-8 md:h-8 text-foreground" />
+            </motion.button>
+          )}
           <div>
             <h1 className="text-5xl font-bold tracking-tighter uppercase italic font-serif text-foreground">
               {client.name}
@@ -467,7 +480,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function NoProgramState({ onBack }: { onBack: () => void }) {
+function NoProgramState({ onBack }: { onBack?: () => void }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -480,12 +493,14 @@ function NoProgramState({ onBack }: { onBack: () => void }) {
       <p className="text-muted-foreground font-mono text-sm mt-2">
         Contact your coach to assign a training block.
       </p>
-      <button
-        onClick={onBack}
-        className="mt-8 text-xs font-bold uppercase tracking-widest underline"
-      >
-        Back
-      </button>
+      {onBack && (
+        <button
+          onClick={onBack}
+          className="mt-8 text-xs font-bold uppercase tracking-widest underline"
+        >
+          Back
+        </button>
+      )}
     </motion.div>
   );
 }
